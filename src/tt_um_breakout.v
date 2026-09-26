@@ -28,26 +28,21 @@ module tt_um_breakout (
         end
     end
 
-    wire [7:0] paddle, cpu_paddle, ball_x, ball_y;
+    wire [7:0] pos_x, pos_y, aux_x, aux_y, pac_score;
     wire [31:0] bricks;
     wire [1:0] lives, state;
-    wire paddle_lost, paddle_won, pac_lost, restart;
-    // One session controller for all games; one ball/paddle engine for both
-    // Breakout and Pong. Only the selected movement engine advances.
-    arcade_session session(clk, rst_n, ena, frame, launch,
-        pacman_mode ? pac_lost : paddle_lost,
-        !pacman_mode && paddle_won, lives, state, restart);
-    paddle_game game(clk, rst_n, ena && !pacman_mode, frame,
-        left, right, pong_mode, state, restart,
-        paddle, cpu_paddle, ball_x, ball_y, bricks, paddle_lost, paddle_won);
-
-    wire [7:0] pac_x, pac_y, ghost_x, ghost_y, pac_score;
+    wire lost, won, done, launch_saved;
     wire [2:0] pac_dir;
     wire pac_mouth;
-    pacman_game pacman(clk, rst_n, ena && pacman_mode, frame,
-                       left, right, up, down, launch, state, restart,
-                       pac_x, pac_y, ghost_x, ghost_y, pac_dir, pac_mouth,
-                       pac_score, pac_lost);
+    arcade_session session(clk, rst_n, ena, done, launch_saved,
+                            lost, won, lives, state, /* restart unused */);
+    arcade_engine engine(clk, rst_n, ena, frame, left, right, up, down,
+        launch, pong_mode, pacman_mode, state,
+        pos_x, pos_y, aux_x, aux_y, bricks, pac_score, pac_dir, pac_mouth,
+        lost, won, done, launch_saved);
+    // One physical bank: ball/Pacman (x,y), paddle/ghost-x (a), CPU/ghost-y (b).
+    wire [7:0] paddle=aux_x, cpu_paddle=aux_y, ball_x=pos_x, ball_y=pos_y;
+    wire [7:0] pac_x=pos_x, pac_y=pos_y, ghost_x=aux_x, ghost_y=aux_y;
 
     wire [31:0] selected_bricks = pong_mode ? 32'b0 : bricks;
 
@@ -185,106 +180,51 @@ module arcade_session (
     end
 endmodule
 
-// Breakout and one-player Pong share the ball, player paddle, movement
-// arithmetic and wall/paddle collisions. Bricks and the CPU remain specific
-// to their respective games; pong_mode is held constant between resets.
-module paddle_game (
-    input wire clk, rst_n, ena, frame, left, right, pong_mode,
+// One position bank and one 8-bit movement ALU serve all three games.
+// A frame request starts a bounded sequence during vertical blanking. The
+// session controller commits lives/state only when done is asserted.
+module arcade_engine (
+    input wire clk, rst_n, ena, frame,
+    input wire left, right, up, down, launch, pong_mode, pacman_mode,
     input wire [1:0] state,
-    input wire restart,
-    output reg [7:0] paddle, cpu_paddle, ball_x, ball_y,
+    output reg [7:0] x, y, a, b,
     output reg [31:0] bricks,
-    output wire lost, won
-);
-    localparam SERVE=2'd0, PLAY=2'd1;
-    reg dx_right, dy_down;
-    wire [7:0] serve_y = pong_mode ? 8'd216 : 8'd217;
-    wire [7:0] paddle_next = left == right ? paddle :
-        (left ? ((paddle < 3) ? 8'd0 : paddle - 8'd3) :
-                ((paddle > 221) ? 8'd224 : paddle + 8'd3));
-    wire [7:0] cpu_next = ball_x[7:5] > cpu_paddle[7:5] && cpu_paddle < 224 ? cpu_paddle + 1'b1 :
-                           ball_x[7:5] < cpu_paddle[7:5] && cpu_paddle > 0 ? cpu_paddle - 1'b1 : cpu_paddle;
-    wire side = dx_right ? ball_x >= 253 : ball_x <= 2;
-    wire [7:0] next_x = side ? ball_x :
-        (dx_right ? ball_x + 1'b1 : ball_x - 1'b1);
-    wire [7:0] next_y = dy_down ? ball_y + 8'd2 : ball_y - 8'd2;
-    wire [7:0] leading_y = dy_down ? ball_y + 8'd4 : ball_y - 8'd4;
-    wire [4:0] lookahead_index = {leading_y[4:3], next_x[7:5]};
-    reg [4:0] brick_index;
-    reg brick_hit;
-    // Positions are stable between frames. Precompute the brick lookup so
-    // the 32:1 read does not extend the frame-update critical path.
-    always @(posedge clk) begin
-        if (!rst_n) begin brick_index <= 0; brick_hit <= 0; end
-        else begin
-            brick_index <= lookahead_index;
-            brick_hit <= leading_y >= 32 && leading_y < 64 && bricks[lookahead_index];
-        end
-    end
-    wire [7:0] paddle_offset = ball_x - paddle;
-    wire [7:0] cpu_offset = ball_x - cpu_paddle;
-    wire player_hit = dy_down && ball_y >= 216 &&
-        (pong_mode ? ball_y < 220 : ball_y < 218) && paddle_offset < 32;
-    wire ceiling_hit = !dy_down && ball_y <= 26;
-    wire cpu_hit = ceiling_hit && ball_y > 22 && cpu_offset < 32;
-    assign lost = pong_mode ? (ball_y >= 236 || ball_y <= 4) : ball_y >= 235;
-    assign won = !pong_mode && bricks == 0;
-
-    always @(posedge clk) begin
-        if (!rst_n) begin
-            paddle <= 112; cpu_paddle <= 112; ball_x <= 128; ball_y <= serve_y;
-            bricks <= 32'hffffffff;
-            dx_right <= 1; dy_down <= pong_mode;
-        end else if (ena && frame) begin
-            paddle <= paddle_next;
-            if (pong_mode) cpu_paddle <= cpu_next;
-            if (restart) begin
-                paddle <= 112; cpu_paddle <= 112; ball_x <= 128; ball_y <= serve_y;
-                bricks <= 32'hffffffff;
-            end else if (state == SERVE) begin
-                ball_x <= paddle_next + 8'd16; ball_y <= serve_y;
-                dx_right <= 1; dy_down <= pong_mode;
-            end else if (state == PLAY && !lost && !won) begin
-                ball_x <= next_x;
-                if (side) dx_right <= !dx_right;
-                if (!pong_mode && ceiling_hit) begin
-                    dy_down <= 1;
-                end else if (player_hit) begin
-                    ball_y <= serve_y; dy_down <= 0;
-                    dx_right <= paddle_offset[4];
-                end else if (pong_mode && cpu_hit) begin
-                    ball_y <= 26; dy_down <= 1;
-                    dx_right <= cpu_offset[4];
-                end else if (!pong_mode && brick_hit) begin
-                    bricks[brick_index] <= 0;
-                    dy_down <= !dy_down;
-                end else ball_y <= next_y;
-            end
-        end
-    end
-endmodule
-
-// A compact Pacman-style maze. The map is a constant, so it needs no RAM.
-module pacman_game (
-    input wire clk, rst_n, ena, frame, left, right, up, down, launch,
-    input wire [1:0] state,
-    input wire restart,
-    output reg [7:0] pac_x, pac_y, ghost_x, ghost_y,
-    output reg [2:0] pac_dir,
-    output reg pac_mouth,
     output reg [7:0] score,
-    output wire lost
+    output reg [2:0] direction,
+    output reg mouth,
+    output reg lost, won,
+    output wire done, launch_saved
 );
     localparam SERVE=2'd0, PLAY=2'd1;
     localparam STOP=3'd0, LEFT=3'd1, RIGHT=3'd2, UP=3'd3, DOWN=3'd4;
-    reg [2:0] wanted;
-    reg [2:0] ghost_dir;
+    localparam IDLE=5'd0, PLAYER_CHECK=5'd1, CPU_CHECK=5'd2,
+        PLAYER_STEP=5'd3, CPU_STEP=5'd4, SERVE_BALL=5'd5,
+        BALL_X=5'd6, BRICK_CHECK=5'd7, BALL_Y=5'd8,
+        G_SCAN=5'd16, P_SCAN=5'd20, G_CHOOSE=5'd24, P_CHOOSE=5'd25,
+        G_STEP=5'd26, P_STEP=5'd27, P_INPUT=5'd28, FINISH=5'd31;
+    // Binary encoding avoids a flip-flop per microstep.
+    (* fsm_encoding = "none" *) reg [4:0] phase;
+    reg alu_ready;
+    reg [4:0] buttons;
+    reg [2:0] wanted, ghost_dir;
+    // Maze: {down,up,right,left}; paddles: {CPU direction,CPU hit,
+    // player direction,player hit}. These uses never overlap.
+    reg [3:0] flags;
+    reg [5:0] brick_probe;
+    assign done = phase == FINISH && alu_ready;
+    assign launch_saved = buttons[4];
+    wire [7:0] serve_y = pong_mode ? 8'd216 : 8'd217;
+    wire aligned = x[3:0] == 0 && y[3:0] == 0;
+    wire ghost_aligned = a[3:0] == 0 && b[3:0] == 0;
+    wire side = direction[0] ? x >= 253 : x <= 2;
+    wire cpu_right = x[7:5] > b[7:5];
+    wire cpu_left = x[7:5] < b[7:5];
 
+    // Exactly one gameplay wall decoder. Four neighbors of each character
+    // are queried on consecutive clocks; the visible maze map is unchanged.
     function maze_wall;
         input [3:0] cx, cy;
         begin
-            // Decode wall runs directly rather than indexing a row bitmap.
-            // This shortens the cell -> legal direction -> position path.
             maze_wall = cx == 0 || cx == 15 || cy == 0 || cy >= 11 ||
                 ((cy == 2 || cy == 10) && cx >= 4 && cx <= 11) ||
                 ((cy == 3 || cy == 4 || cy == 8 || cy == 9) && cx == 8) ||
@@ -292,91 +232,169 @@ module pacman_game (
                 (cy == 6 && cx >= 9 && cx <= 11);
         end
     endfunction
-
-    wire [3:0] cell_x = pac_x[7:4];
-    wire [3:0] cell_y = pac_y[7:4];
-    wire aligned = pac_x[3:0] == 0 && pac_y[3:0] == 0;
-    wire open_left = !maze_wall(cell_x - 1'b1, cell_y);
-    wire open_right = !maze_wall(cell_x + 1'b1, cell_y);
-    wire open_up = !maze_wall(cell_x, cell_y - 1'b1);
-    wire open_down = !maze_wall(cell_x, cell_y + 1'b1);
-    wire wanted_open = wanted == LEFT ? open_left :
-                       wanted == RIGHT ? open_right :
-                       wanted == UP ? open_up :
-                       wanted == DOWN ? open_down : 1'b0;
-    wire current_open = pac_dir == LEFT ? open_left :
-                        pac_dir == RIGHT ? open_right :
-                        pac_dir == UP ? open_up :
-                        pac_dir == DOWN ? open_down : 1'b0;
-    wire [2:0] move_dir = aligned ?
-        (wanted != STOP && wanted_open ? wanted :
-         (pac_dir != STOP && current_open ? pac_dir : STOP)) : pac_dir;
-    wire [7:0] next_x = move_dir == LEFT ? pac_x - 2 :
-                        move_dir == RIGHT ? pac_x + 2 : pac_x;
-    wire [7:0] next_y = move_dir == UP ? pac_y - 2 :
-                        move_dir == DOWN ? pac_y + 2 : pac_y;
-    wire [3:0] ghost_cell_x = ghost_x[7:4];
-    wire [3:0] ghost_cell_y = ghost_y[7:4];
-    wire ghost_aligned = ghost_x[3:0] == 0 && ghost_y[3:0] == 0;
-    wire ghost_open_left = !maze_wall(ghost_cell_x - 1'b1, ghost_cell_y);
-    wire ghost_open_right = !maze_wall(ghost_cell_x + 1'b1, ghost_cell_y);
-    wire ghost_open_up = !maze_wall(ghost_cell_x, ghost_cell_y - 1'b1);
-    wire ghost_open_down = !maze_wall(ghost_cell_x, ghost_cell_y + 1'b1);
-    wire [2:0] ghost_turn = ghost_cell_x != cell_x ?
-        (ghost_cell_x > cell_x && ghost_open_left ? LEFT :
-         ghost_cell_x < cell_x && ghost_open_right ? RIGHT :
-         ghost_cell_y > cell_y && ghost_open_up ? UP :
-         ghost_cell_y < cell_y && ghost_open_down ? DOWN :
-         ghost_open_left ? LEFT : ghost_open_right ? RIGHT :
-         ghost_open_up ? UP : ghost_open_down ? DOWN : STOP) :
-        (ghost_cell_y > cell_y && ghost_open_up ? UP :
-         ghost_cell_y < cell_y && ghost_open_down ? DOWN :
-         ghost_open_left ? LEFT : ghost_open_right ? RIGHT :
-         ghost_open_up ? UP : ghost_open_down ? DOWN : STOP);
-    wire [2:0] ghost_move_dir = ghost_aligned ? ghost_turn : ghost_dir;
-    wire [7:0] ghost_next_x = ghost_move_dir == LEFT ? ghost_x - 2 :
-                              ghost_move_dir == RIGHT ? ghost_x + 2 : ghost_x;
-    wire [7:0] ghost_next_y = ghost_move_dir == UP ? ghost_y - 2 :
-                              ghost_move_dir == DOWN ? ghost_y + 2 : ghost_y;
-    assign lost = pac_x[7:4] == ghost_x[7:4] &&
-                     pac_y[7:4] == ghost_y[7:4];
+    wire scanning = phase[4:3] == 2'b10;
+    wire [7:0] probe_x = phase[2] ? x : a;
+    wire [7:0] probe_y = phase[2] ? y : b;
+    reg [1:0] source_select;
+    wire [7:0] alu_a = source_select[1] ? (source_select[0] ? b : a) :
+                                           (source_select[0] ? y : x);
+    reg [7:0] alu_b;
+    reg subtract;
+    wire [7:0] alu_value = alu_a + (alu_b ^ {8{subtract}}) + {7'b0, subtract};
+    // Each microstep computes, then consumes the result on the next clock.
+    // This separates operand selection/addition from collision/map decoding.
+    reg [7:0] alu_result;
+    always @* begin
+        source_select = 0; alu_b = 0; subtract = 0;
+        case (phase)
+            PLAYER_CHECK: begin source_select=0; alu_b=a; subtract=1; end
+            CPU_CHECK: begin source_select=0; alu_b=b; subtract=1; end
+            PLAYER_STEP: begin source_select=2; alu_b=buttons[0] ? 8'hfd : 8'd3; end
+            CPU_STEP: begin source_select=3; alu_b=cpu_right ? 8'd1 : 8'hff; end
+            SERVE_BALL: begin source_select=2; alu_b=8'd16; end
+            BALL_X: begin source_select=0; alu_b=direction[0] ? 8'd1 : 8'hff; end
+            BRICK_CHECK: begin source_select=1; alu_b=direction[1] ? 8'd4 : 8'hfc; end
+            BALL_Y: begin source_select=1; alu_b=direction[1] ? 8'd2 : 8'hfe; end
+            G_STEP: begin
+                source_select = {1'b1, (ghost_dir == UP || ghost_dir == DOWN)};
+                alu_b = (ghost_dir == RIGHT || ghost_dir == DOWN) ? 8'd2 : 8'hfe;
+            end
+            P_STEP: begin
+                source_select = {1'b0, (direction == UP || direction == DOWN)};
+                alu_b = (direction == RIGHT || direction == DOWN) ? 8'd2 : 8'hfe;
+            end
+            default: begin
+                if (scanning) begin
+                    source_select = {!phase[2], phase[1]};
+                    alu_b = phase[0] ? 8'd16 : 8'hf0;
+                end
+            end
+        endcase
+    end
+    wire [3:0] query_x = phase[1] ? probe_x[7:4] : alu_result[7:4];
+    wire [3:0] query_y = phase[1] ? alu_result[7:4] : probe_y[7:4];
+    wire query_open = !maze_wall(query_x, query_y);
+    wire [4:0] brick_index = {alu_result[4:3], x[7:5]};
+    wire wanted_open = wanted == LEFT ? flags[0] : wanted == RIGHT ? flags[1] :
+                       wanted == UP ? flags[2] : wanted == DOWN ? flags[3] : 1'b0;
+    wire current_open = direction == LEFT ? flags[0] : direction == RIGHT ? flags[1] :
+                        direction == UP ? flags[2] : direction == DOWN ? flags[3] : 1'b0;
+    wire [2:0] ghost_turn = a[7:4] > x[7:4] && flags[0] ? LEFT :
+        a[7:4] < x[7:4] && flags[1] ? RIGHT :
+        b[7:4] > y[7:4] && flags[2] ? UP :
+        b[7:4] < y[7:4] && flags[3] ? DOWN :
+        flags[0] ? LEFT : flags[1] ? RIGHT : flags[2] ? UP : flags[3] ? DOWN : STOP;
 
     always @(posedge clk) begin
         if (!rst_n) begin
-            pac_x <= 16; pac_y <= 16; ghost_x <= 224; ghost_y <= 160;
-            pac_dir <= RIGHT; wanted <= RIGHT; pac_mouth <= 0;
-            ghost_dir <= LEFT;
-            score <= 0;
-        end else if (ena && frame) begin
-            if (left) wanted <= LEFT;
-            else if (right) wanted <= RIGHT;
-            else if (up) wanted <= UP;
-            else if (down) wanted <= DOWN;
-            case (state)
-                SERVE: begin
-                    // Respawn on the launch edge, outside the collision path.
-                    if (launch) begin
-                        pac_x <= 16; pac_y <= 16; ghost_x <= 224; ghost_y <= 160;
-                        pac_dir <= RIGHT; wanted <= RIGHT; pac_mouth <= 0;
-                        ghost_dir <= LEFT;
-                    end
+            phase <= IDLE; buttons <= 0; flags <= 0; brick_probe <= 0;
+            alu_result <= 0; alu_ready <= 0;
+            x <= pacman_mode ? 8'd16 : 8'd128;
+            y <= pacman_mode ? 8'd16 : serve_y;
+            a <= pacman_mode ? 8'd224 : 8'd112;
+            b <= pacman_mode ? 8'd160 : 8'd112;
+            direction <= pacman_mode ? RIGHT : {1'b0, pong_mode, 1'b1};
+            wanted <= RIGHT; ghost_dir <= LEFT;
+            bricks <= 32'hffffffff; score <= 0; mouth <= 0;
+            lost <= 0; won <= 0;
+        end else if (ena) begin
+            alu_result <= alu_value;
+            alu_ready <= phase == IDLE ? 1'b0 : !alu_ready;
+            if (phase == IDLE || alu_ready) case (phase)
+                IDLE: if (frame) begin
+                    buttons <= {launch, down, up, right, left};
+                    lost <= pacman_mode ? (x[7:4] == a[7:4] && y[7:4] == b[7:4]) :
+                        (pong_mode ? (y >= 236 || y <= 4) : y >= 235);
+                    won <= !pacman_mode && !pong_mode && bricks == 0;
+                    if (pacman_mode) begin
+                        if ((state == SERVE || state[1]) && launch) begin
+                            x<=16; y<=16; a<=224; b<=160;
+                            direction<=RIGHT; wanted<=RIGHT; ghost_dir<=LEFT; mouth<=0;
+                            if (state[1]) score<=0;
+                            phase<=FINISH;
+                        end else if (state == PLAY) begin
+                            mouth <= !mouth;
+                            if (aligned) score <= score + 1'b1;
+                            phase <= ghost_aligned ? G_SCAN : G_STEP;
+                        end else phase <= P_INPUT;
+                    end else if (state[1] && launch) begin
+                        x<=128; y<=serve_y; a<=112; b<=112;
+                        bricks<=32'hffffffff; phase<=FINISH;
+                    end else phase<=PLAYER_CHECK;
                 end
-                PLAY: begin
-                    pac_dir <= move_dir;
-                    pac_x <= next_x; pac_y <= next_y;
-                    ghost_x <= ghost_next_x; ghost_y <= ghost_next_y;
-                    if (ghost_aligned) ghost_dir <= ghost_turn;
-                    pac_mouth <= !pac_mouth;
-                    if (aligned) score <= score + 1'b1;
+                PLAYER_CHECK: begin
+                    flags[0] <= direction[1] && y >= 216 &&
+                        (pong_mode ? y < 220 : y < 218) && alu_result[7:5] == 0;
+                    flags[1] <= alu_result[4]; phase<=CPU_CHECK;
                 end
-                default: begin
-                    if (restart) begin
-                        pac_x <= 16; pac_y <= 16; ghost_x <= 224; ghost_y <= 160;
-                        pac_dir <= RIGHT; wanted <= RIGHT; pac_mouth <= 0;
-                        ghost_dir <= LEFT;
-                        score <= 0;
-                    end
+                CPU_CHECK: begin
+                    flags[2] <= !direction[1] && y <= 26 && y > 22 && alu_result[7:5] == 0;
+                    flags[3] <= alu_result[4]; phase<=PLAYER_STEP;
                 end
+                PLAYER_STEP: begin
+                    if (buttons[0] != buttons[1])
+                        a <= buttons[0] && a < 3 ? 8'd0 :
+                             buttons[1] && a > 221 ? 8'd224 : alu_result;
+                    phase<=CPU_STEP;
+                end
+                CPU_STEP: begin
+                    if (pong_mode && ((cpu_right && b < 224) || (cpu_left && b > 0))) b<=alu_result;
+                    if (state == SERVE) phase<=SERVE_BALL;
+                    else if (state == PLAY && !lost && !won) phase<=BALL_X;
+                    else phase<=FINISH;
+                end
+                SERVE_BALL: begin
+                    x<=alu_result; y<=serve_y; direction<={1'b0,pong_mode,1'b1};
+                    phase<=FINISH;
+                end
+                BALL_X: begin
+                    if (side) direction[0]<=!direction[0]; else x<=alu_result;
+                    phase<=BRICK_CHECK;
+                end
+                BRICK_CHECK: begin
+                    brick_probe <= {alu_result >= 32 && alu_result < 64 && bricks[brick_index], brick_index};
+                    phase<=BALL_Y;
+                end
+                BALL_Y: begin
+                    if (!pong_mode && !direction[1] && y <= 26) direction[1]<=1;
+                    else if (flags[0]) begin
+                        y<=serve_y; direction[1:0]<={1'b0,flags[1]};
+                    end else if (pong_mode && flags[2]) begin
+                        y<=26; direction[1:0]<={1'b1,flags[3]};
+                    end else if (!pong_mode && brick_probe[5]) begin
+                        bricks[brick_probe[4:0]]<=0; direction[1]<=!direction[1];
+                    end else y<=alu_result;
+                    phase<=FINISH;
+                end
+                G_SCAN, G_SCAN+1, G_SCAN+2, G_SCAN+3,
+                P_SCAN, P_SCAN+1, P_SCAN+2, P_SCAN+3: begin
+                    flags <= {query_open,flags[3:1]};
+                    if (phase[1:0] == 3) phase <= phase[2] ? P_CHOOSE : G_CHOOSE;
+                    else phase <= phase + 1'b1;
+                end
+                G_CHOOSE: begin ghost_dir<=ghost_turn; phase<=G_STEP; end
+                G_STEP: begin
+                    if (ghost_dir==LEFT || ghost_dir==RIGHT) a<=alu_result;
+                    else if (ghost_dir==UP || ghost_dir==DOWN) b<=alu_result;
+                    phase<=aligned ? P_SCAN : P_STEP;
+                end
+                P_CHOOSE: begin
+                    direction <= wanted_open ? wanted : current_open ? direction : STOP;
+                    phase<=P_STEP;
+                end
+                P_STEP: begin
+                    if (direction==LEFT || direction==RIGHT) x<=alu_result;
+                    else if (direction==UP || direction==DOWN) y<=alu_result;
+                    phase<=P_INPUT;
+                end
+                P_INPUT: begin
+                    if (buttons[0]) wanted<=LEFT;
+                    else if (buttons[1]) wanted<=RIGHT;
+                    else if (buttons[2]) wanted<=UP;
+                    else if (buttons[3]) wanted<=DOWN;
+                    phase<=FINISH;
+                end
+                default: phase<=IDLE;
             endcase
         end
     end

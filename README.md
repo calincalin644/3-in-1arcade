@@ -20,15 +20,24 @@ a compact Pacman-style maze with pellets, a moving ghost and a controllable
 yellow character. Both characters obey the maze walls. The maze is a constant
 map and uses no framebuffer.
 
-Breakout and Pong share one ball/paddle engine, including position registers,
-movement arithmetic and common collision checks. All three games share one
-lives counter and serve/play/game-over controller; only the selected movement
-engine advances. Bricks and the Pong CPU remain mode-specific, and Pacman
-retains its own maze movement. Textured bricks are retained.
+All games now use one sequenced movement engine, one lives/session controller,
+and four shared 8-bit position registers. In Breakout/Pong those registers hold
+ball X/Y and player/CPU paddle X; in Pacman they hold player X/Y and ghost X/Y.
+One 8-bit add/subtract datapath performs movement and collision arithmetic over
+successive clocks. Pacman's eight neighbor checks use one gameplay wall decoder.
+The VGA renderer keeps its own maze lookup for continuous pixel generation.
 
-Under the same local SKY130 mapping, sharing reduced cell area from 15,945 to
-13,439 square micrometers (15.7%). This is about 75% of a 1x1 tile's gross area,
-before physical implementation overhead; 1x1 fit still requires hardening.
+Inputs are captured at the start of vertical blanking. The longest update completes
+within 32 pixel clocks (1.27 microseconds at 25.2 MHz), well before visible video
+resumes. Each operation has a compute clock and a consume clock. Disabling `ena`
+pauses the sequence; reset aborts it. Switching games still requires reset.
+Textured bricks, ghost chase rules, controller decoding, and VGA timing remain.
+
+Under the same local SKY130 mapping, this change reduced cell area from 13,439 to
+11,437 square micrometers (14.9%). These figures are only useful for relative
+comparison: the previous revision mapped to 18,012 square micrometers in the actual
+SKY 26d flow and failed placement at 128.827% utilization. This revision needs a new
+GitHub hardening run; the local estimate does not establish 1x1 fit.
 
 The onboard 7-segment display shows the selected game's remaining lives,
 from 3 down to 0. VGA uses `uio_out[7:0]` on BIDIR with all eight output
@@ -108,7 +117,9 @@ make -C breakout test COMPILE_ARGS="-B $PWD/.tools/local/usr/lib/x86_64-linux-gn
 
 The RTL unit test covers DIP debounce, serial controller decoding, stale reports,
 movement limits, launch, collision cases, lost lives, win, restart, and
-isolation of inactive engines from the shared session. Cocotb tests
+frame input capture, pausing, reset during an update, and shared-bank mode changes.
+A separate regression compares all three games with the frozen previous engines
+for 10,000 frames each, including disabled frames and restarts. Cocotb tests
 inspect the external pins for sync boundaries on every line, blanking, initial
 graphics, opposing directions, movement and launch. They also work on the
 gate-level netlist without accessing internal registers. Simulation uses a
@@ -138,16 +149,20 @@ Exclude build products, `.tools/`, Python caches, and simulation build directori
 The GDS/docs/test workflows come from the official SKY template at commit
 `83d305501d505b157cd6e9ba87bc8ffd949526fd` and use `ttsky26d` actions.
 The FPGA workflow builds this project's wrapper at the actual pixel-clock rate.
+`src/config.json` also constrains ASIC timing to 39.68 ns (approximately 25.2 MHz),
+replacing the template's unnecessary 20 ns / 50 MHz constraint. Tile dimensions
+and placement density have not been changed.
 
 ## Verification and limits
 
 - RTL unit tests and external video/control simulation have passed locally.
-- FPGA synthesis, placement and routing passed at 25.2 MHz (27.10 MHz reported
-  maximum); the design uses 1,368 of 5,280 FPGA logic cells.
-- An early SKY130 mapping estimates about 13,439 square micrometers of standard
+- FPGA synthesis, placement and routing passed at 25.2 MHz (30.04 MHz reported
+  maximum); the design uses 1,180 of 5,280 FPGA logic cells.
+- An early SKY130 mapping estimates about 11,437 square micrometers of standard
   cells with all three games. This is a rough synthesis estimate using OpenROAD's SKY130 HD typical
   library, not Tiny Tapeout signoff: it excludes clock-tree and physical overhead.
-- **1x1 ASIC fit is a target, not yet verified.** GitHub hardening must establish
+- **1x1 ASIC fit remains unverified for this revision.** The previous revision
+  failed SKY 26d placement at 128.827%; that failure is not a result for this new RTL. GitHub hardening must establish
   routed area, timing, DRC and LVS before this can be called tapeout-ready.
 - Physical VGA display/controller testing is pending; the generated image is
   from simulation. No numeric score, sound, acceleration or framebuffer is included.

@@ -10,28 +10,26 @@ module unit;
     wire [7:0] paddle,bx,by;
     wire [31:0] bricks;
     wire [1:0] lives,state;
-    wire game_lost, game_won, game_restart;
+    wire game_lost, game_won, game_done, game_launch;
     wire [7:0] unused_cpu;
-    arcade_session game_session(clk,rst_n,ena,frame,gf,game_lost,game_won,lives,state,game_restart);
-    paddle_game game(clk,rst_n,ena,frame,gl,gr,1'b0,state,game_restart,
-                     paddle,unused_cpu,bx,by,bricks,game_lost,game_won);
+    arcade_session game_session(clk,rst_n,ena,game_done,game_launch,game_lost,game_won,lives,state,);
+    arcade_engine game(clk,rst_n,ena,frame,gl,gr,1'b0,1'b0,gf,1'b0,1'b0,state,
+                      bx,by,paddle,unused_cpu,bricks,,, ,game_lost,game_won,game_done,game_launch);
     reg pl=0, pr=0, pf=0;
     wire [7:0] pp, cp, pbx, pby;
     wire [1:0] plives, pstate;
-    wire pong_lost, pong_won, pong_restart;
-    wire [31:0] unused_bricks;
-    arcade_session pong_session(clk,rst_n,ena,frame,pf,pong_lost,pong_won,plives,pstate,pong_restart);
-    paddle_game pong(clk,rst_n,ena,frame,pl,pr,1'b1,pstate,pong_restart,
-                     pp,cp,pbx,pby,unused_bricks,pong_lost,pong_won);
+    wire pong_lost, pong_won, pong_done, pong_launch;
+    arcade_session pong_session(clk,rst_n,ena,pong_done,pong_launch,pong_lost,pong_won,plives,pstate,);
+    arcade_engine pong(clk,rst_n,ena,frame,pl,pr,1'b0,1'b0,pf,1'b1,1'b0,pstate,
+                      pbx,pby,pp,cp,,,, ,pong_lost,pong_won,pong_done,pong_launch);
     reg pal=0, par=0, pau=0, pad=0, paf=0;
     wire [7:0] pacx, pacy, ghostx, ghosty, pacscore;
     wire [1:0] paclives, pacstate;
     wire [2:0] pacdir;
-    wire pacmouth;
-    wire pac_lost, pac_restart;
-    arcade_session pac_session(clk,rst_n,ena,frame,paf,pac_lost,1'b0,paclives,pacstate,pac_restart);
-    pacman_game pac(clk,rst_n,ena,frame,pal,par,pau,pad,paf,pacstate,pac_restart,
-                    pacx,pacy,ghostx,ghosty,pacdir,pacmouth,pacscore,pac_lost);
+    wire pacmouth, pac_lost, pac_won, pac_done, pac_launch;
+    arcade_session pac_session(clk,rst_n,ena,pac_done,pac_launch,pac_lost,pac_won,paclives,pacstate,);
+    arcade_engine pac(clk,rst_n,ena,frame,pal,par,pau,pad,paf,1'b0,1'b1,pacstate,
+                      pacx,pacy,ghostx,ghosty,,pacscore,pacdir,pacmouth,pac_lost,pac_won,pac_done,pac_launch);
     reg [7:0] top_ui=0;
     wire [7:0] top_uo, top_uio, top_oe;
     tt_um_breakout top_dut(
@@ -42,12 +40,12 @@ module unit;
         repeat(n) begin @(posedge clk); #1; end
     endtask
     task tick;
-        begin @(negedge clk); frame=1; clocks(1); @(negedge clk); frame=0; clocks(1); end
+        begin @(negedge clk); frame=1; clocks(1); @(negedge clk); frame=0; clocks(40); end
     endtask
     task top_tick;
         begin
             @(negedge clk); force top_dut.frame=1'b1; clocks(1);
-            @(negedge clk); release top_dut.frame; clocks(2);
+            @(negedge clk); release top_dut.frame; clocks(40);
         end
     endtask
     task reset;
@@ -68,6 +66,7 @@ module unit;
     integer i, mode, mx, my;
     reg [7:0] expected_digit;
     reg [15:0] maze_row;
+    reg [4:0] saved_phase;
     initial begin
         reset;
         if(paddle!==112 || bx!==128 || state!==0 || lives!==3 || bricks!==32'hffffffff)
@@ -125,27 +124,27 @@ module unit;
         if(by!==217) $fatal(1,"ena hold");
         ena=1;
         // Directed collision scenarios use only this RTL unit test.
-        @(negedge clk); game.ball_x=253; game.ball_y=150; game.dx_right=1; game.dy_down=0;
+        @(negedge clk); game.x=253; game.y=150; game.direction[0]=1; game.direction[1]=0;
         tick;
-        if(game.dx_right!==0 || bx!==253) $fatal(1,"Right wall bounce");
-        @(negedge clk); game.ball_x=2; game.dx_right=0;
+        if(game.direction[0]!==0 || bx!==253) $fatal(1,"Right wall bounce");
+        @(negedge clk); game.x=2; game.direction[0]=0;
         tick;
-        if(game.dx_right!==1 || bx!==2) $fatal(1,"Left wall bounce");
-        @(negedge clk); game.ball_y=26; game.dy_down=0;
+        if(game.direction[0]!==1 || bx!==2) $fatal(1,"Left wall bounce");
+        @(negedge clk); game.y=26; game.direction[1]=0;
         tick;
-        if(game.dy_down!==1 || by!==26) $fatal(1,"Ceiling bounce");
-        @(negedge clk); game.ball_x=128; game.ball_y=66; game.dy_down=0; game.dx_right=1;
+        if(game.direction[1]!==1 || by!==26) $fatal(1,"Ceiling bounce");
+        @(negedge clk); game.x=128; game.y=66; game.direction[1]=0; game.direction[0]=1;
         tick;
-        if(bricks[28]!==0 || game.dy_down!==1 || by!==66) $fatal(1,"Brick hit");
-        @(negedge clk); game.paddle=112; game.ball_x=120; game.ball_y=217; game.dy_down=1;
+        if(bricks[28]!==0 || game.direction[1]!==1 || by!==66) $fatal(1,"Brick hit");
+        @(negedge clk); game.a=112; game.x=120; game.y=217; game.direction[1]=1;
         tick;
-        if(game.dy_down!==0 || by!==217 || game.dx_right!==0) $fatal(1,"Paddle left bounce");
-        @(negedge clk); game.ball_x=135; game.ball_y=217; game.dy_down=1;
+        if(game.direction[1]!==0 || by!==217 || game.direction[0]!==0) $fatal(1,"Paddle left bounce");
+        @(negedge clk); game.x=135; game.y=217; game.direction[1]=1;
         tick;
-        if(game.dy_down!==0 || game.dx_right!==1) $fatal(1,"Paddle right bounce");
+        if(game.direction[1]!==0 || game.direction[0]!==1) $fatal(1,"Paddle right bounce");
         // Missing paddle costs one life and holds for a new launch edge.
         for(i=2;i>=0;i=i-1) begin
-            @(negedge clk); game.ball_y=235; game_session.state=1;
+            @(negedge clk); game.y=235; game_session.state=1;
             tick;
             if(lives!==i || state!==((i==0)?2:0)) $fatal(1,"Life/game-over transition");
         end
@@ -164,12 +163,12 @@ module unit;
         if(pp <= 112) $fatal(1,"Pong right movement");
         pr=0; pf=1; tick; pf=0;
         if(pstate!==1) $fatal(1,"Pong launch");
-        @(negedge clk); pong.ball_x=120; pong.ball_y=217; pong.paddle=112;
-        pong.dy_down=1; tick;
-        if(pong.dy_down!==0 || pby!==216) $fatal(1,"Pong player bounce");
-        @(negedge clk); pong.ball_x=128; pong.ball_y=26; pong.cpu_paddle=112;
-        pong.dy_down=0; tick;
-        if(pong.dy_down!==1 || pby!==26) $fatal(1,"Pong CPU bounce");
+        @(negedge clk); pong.x=120; pong.y=217; pong.a=112;
+        pong.direction[1]=1; tick;
+        if(pong.direction[1]!==0 || pby!==216) $fatal(1,"Pong player bounce");
+        @(negedge clk); pong.x=128; pong.y=26; pong.b=112;
+        pong.direction[1]=0; tick;
+        if(pong.direction[1]!==1 || pby!==26) $fatal(1,"Pong CPU bounce");
 
         // The third mode is a frame-based Pacman maze game.
         for(my=0;my<16;my=my+1) begin
@@ -189,15 +188,36 @@ module unit;
         if(pacx <= 16) $fatal(1,"Pacman right movement");
         // The red ghost approaches a wall at (11,10) and must turn into the
         // open corridor above it rather than entering the blocked tile.
-        @(negedge clk); pac.ghost_x=12*16; pac.ghost_y=10*16;
-        pac.pac_x=16; pac.pac_y=16; pac.ghost_dir=1;
+        @(negedge clk); pac.a=12*16; pac.b=10*16;
+        pac.x=16; pac.y=16; pac.ghost_dir=1;
         tick;
-        if(pac.ghost_x[7:4]!==12 || pac.ghost_y[7:4]!==9)
+        if(pac.a[7:4]!==12 || pac.b[7:4]!==9)
             $fatal(1,"Pacman ghost did not turn around wall");
-        @(negedge clk); pac.pac_x=16; pac.pac_y=16;
-        pac.ghost_x=16; pac.ghost_y=16; pac_session.state=1;
+        @(negedge clk); pac.x=16; pac.y=16;
+        pac.a=16; pac.b=16; pac_session.state=1;
         tick;
         if(paclives!==2 || pacstate!==0) $fatal(1,"Pacman collision/life");
+        // Inputs belong to the frame request, not the later ALU cycles.
+        // Pausing in mid-transaction must hold both phase and position.
+        gl=0; gr=1; reset;
+        @(negedge clk); frame=1; clocks(1);
+        @(negedge clk); frame=0; clocks(2);
+        @(negedge clk); ena=0; gl=1; gr=0; saved_phase=game.phase;
+        clocks(10);
+        if(game.phase!==saved_phase || paddle!==112 || state!==0)
+            $fatal(1,"Paused microsequence advanced");
+        @(negedge clk); ena=1; clocks(40);
+        if(paddle!==115 || bx!==131 || game.phase!==0)
+            $fatal(1,"Mid-frame input change corrupted pending movement");
+        gl=0;
+        // Reset must abort any partially completed maze update.
+        for(i=0;i<32;i=i+1) begin
+            reset; @(negedge clk); pac_session.state=1; frame=1; clocks(1);
+            @(negedge clk); frame=0; clocks(i);
+            reset;
+            if(pac.phase!==0 || pacx!==16 || pacy!==16 || ghostx!==224 || ghosty!==160 || paclives!==3)
+                $fatal(1,"Reset failed to abort update at offset %0d",i);
+        end
         top_ui=8'h88; reset;
         if({top_dut.pacman_mode,top_dut.pong_mode}!==2'b10) $fatal(1,"Pacman selector");
         top_ui=8'h08; reset;
@@ -209,6 +229,8 @@ module unit;
             reset;
             if(top_uo!==8'h4f || top_oe!==8'hff)
                 $fatal(1,"Display reset or VGA output enables");
+            if(top_dut.pos_x!==((mode==3)?16:128) || top_dut.aux_x!==((mode==3)?224:112))
+                $fatal(1,"Shared position bank did not reset for selected game");
             for(i=0;i<4;i=i+1) begin
                 @(negedge clk);
                 top_dut.session.lives=i;
@@ -224,28 +246,18 @@ module unit;
             end
             force top_dut.launch=1'b1; top_tick; release top_dut.launch;
             if(top_dut.state!==1) $fatal(1,"Selected game did not launch");
-            // An inactive engine's collision must neither cost a life nor
-            // move that engine. Modes cannot change without a reset.
+            // Physical positions are shared. Selector changes during play
+            // must not reinterpret that bank until reset is asserted.
             top_ui=~top_ui;
-            @(negedge clk);
-            if(mode==3) top_dut.game.ball_y=240;
-            else begin
-                top_dut.pacman.ghost_x=16;
-                top_dut.pacman.ghost_y=16;
-            end
             top_tick;
-            if(top_dut.lives!==3 || top_dut.state!==1)
-                $fatal(1,"Inactive game changed shared session");
-            if(mode==3 && top_dut.game.ball_y!==240)
-                $fatal(1,"Inactive paddle engine moved");
-            if(mode!=3 && top_dut.pacman.pac_x!==16)
-                $fatal(1,"Inactive maze engine moved");
+            if(top_dut.pacman_mode!==(mode==3) || top_dut.pong_mode!==(mode==1))
+                $fatal(1,"Game mode changed without reset");
             for(i=2;i>=0;i=i-1) begin
                 @(negedge clk); top_dut.session.state=1;
                 if(mode==3) begin
-                    top_dut.pacman.pac_x=16; top_dut.pacman.pac_y=16;
-                    top_dut.pacman.ghost_x=16; top_dut.pacman.ghost_y=16;
-                end else top_dut.game.ball_y=240;
+                    top_dut.engine.x=16; top_dut.engine.y=16;
+                    top_dut.engine.a=16; top_dut.engine.b=16;
+                end else top_dut.engine.y=240;
                 top_tick;
                 if(top_dut.lives!==i || top_dut.state!==((i==0)?2:0))
                     $fatal(1,"Shared life loss: mode=%0d remaining=%0d",mode,i);

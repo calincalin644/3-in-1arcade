@@ -30,6 +30,8 @@ jobs:
           make
           iverilog -g2012 -s unit -o /tmp/breakout-unit unit.v ../src/tt_um_breakout.v
           vvp /tmp/breakout-unit
+          iverilog -g2012 -s compare -o /tmp/arcade-compare compare.v reference_games.v ../src/tt_um_breakout.v
+          vvp /tmp/arcade-compare
           # make will return success even if the test fails, so check for failed tests in results.xml.
           ! grep -E '<(failure|error)' results.xml
 

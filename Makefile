@@ -20,6 +20,8 @@ build/$(NAME).bin: build/$(NAME).asc
 test: | build
 	$(IVERILOG) -g2012 -s unit -o build/unit test/unit.v src/$(NAME).v
 	$(VVP) build/unit
+	$(IVERILOG) -g2012 -s compare -o build/compare test/compare.v test/reference_games.v src/$(NAME).v
+	$(VVP) build/compare
 	$(MAKE) -C test
 upload: all
 	$(MPREMOTE) connect $(PORT) fs cp build/$(NAME).bin :/bitstreams/$(NAME).bin

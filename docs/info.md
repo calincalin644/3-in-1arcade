@@ -13,11 +13,17 @@ the top. Launch starts a rally; missing either paddle costs a life. Set both
 Pacman uses a constant tile map, pellets, a moving ghost and four-direction
 gamepad controls without a framebuffer; launch starts a life.
 
-Breakout and Pong share ball and player-paddle registers, movement arithmetic,
-and common collision checks. One lives counter and session state machine serves
-all three games. Only the selected engine advances, and only its loss/win events
-reach the session controller. On the last lost life, game-over is immediate in
-all games. Restart restores three lives and resets the selected game's objects.
+All three games use one sequential movement engine and one lives/session controller.
+Four 8-bit position registers serve ball X/Y and paddle X positions in Breakout/Pong,
+or player X/Y and ghost X/Y in Pacman. Movement and offset calculations use a shared
+8-bit add/subtract datapath. A single gameplay wall decoder checks the eight maze
+neighbors in successive operations; the renderer has its own wall lookup.
+
+Controls are captured at vertical blanking. Updates complete within 32 pixel clocks;
+the renderer sees the completed positions before the next active frame. Each
+operation takes two clocks to preserve timing. `ena=0` pauses an in-progress update,
+and reset aborts it. Mode selection is held until reset. Game-over occurs on the
+last lost life; restart restores three lives and resets the selected game's objects.
 
 The display uses standard Tiny VGA RGB222 wiring (64 available colors),
 640x480 timing, and 320x240 logical coordinates. The input clock is 25.2 MHz:
@@ -79,7 +85,9 @@ to GND. Share ground with the demoboard. Keep DIP 0/1/2 OFF when using buttons.
 Keep DIP 4/5/6 OFF when the gamepad is connected. Manual-input mode prevents
 the management microcontroller from driving these inputs.
 
-RTL unit tests cover input conditioning and directed game states. The external
+RTL unit tests cover input conditioning, directed game states, frame input capture,
+pausing and reset during an update. Reference simulations compare all three games
+with the previous engines over 10,000 frames each. The external
 pin tests cover sync boundaries, blanking, initial colors, paddle movement and
 launch, and can also run on the gate-level netlist.
 
