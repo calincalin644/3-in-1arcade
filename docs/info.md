@@ -15,15 +15,23 @@ Pacman uses a constant tile map, pellets, a moving ghost and four-direction
 gamepad controls without a framebuffer; launch starts a life.
 
 All three games use one sequential movement engine and one lives/session controller.
-Four 8-bit position registers serve ball X/Y and paddle X positions in Breakout/Pong,
+Four 6-bit position registers serve ball X/Y and paddle X positions in Breakout/Pong,
 or player X/Y and ghost X/Y in Pacman. Movement and offset calculations use a shared
-8-bit add/subtract datapath. A single gameplay wall decoder checks the eight maze
+6-bit add/subtract datapath. A single gameplay wall decoder checks the eight maze
 neighbors in successive operations; the renderer has its own wall lookup.
 The six-bit brick collision probe doubles as Pacman direction storage: bits
 [2:0] hold the requested player direction and [5:3] hold the ghost direction.
 Reset and respawn initialize the directions; Breakout overwrites the probe
 before using it. This removes separate direction registers without changing
 movement or victory timing.
+
+Each stored position counts four rendering pixels, giving 64 horizontal
+positions across the playfield. The renderer expands coordinates by appending
+two zero bits. Paddles update every frame by one grid unit; ball and maze
+movement update every second PLAY frame by one grid unit. Controls and loss/win
+checks still run every frame. Pacman and ghost average speed and ball vertical
+speed are preserved, ball horizontal speed doubles, and paddles move one-third
+faster. All 32 bricks, object sizes and the maze layout remain unchanged.
 
 Controls are captured at vertical blanking. Updates complete within 32 pixel clocks;
 the renderer sees the completed positions before the next active frame. Each
@@ -93,7 +101,9 @@ the management microcontroller from driving these inputs.
 RTL unit tests cover input conditioning, directed game states, frame input capture,
 pausing and reset during an update. Reference simulations compare all three games
 with behavioral reference engines over 10,000 frames each; the Pong reference
-includes coarse CPU tracking, with directed tests for all eight CPU columns. The external
+includes coarse CPU tracking. References use rendering-pixel coordinates with
+the new movement rates; directed tests cover all 32 brick cells, all eight CPU
+columns, and the alternate-frame movement cadence. The external
 pin tests cover sync boundaries, blanking, initial colors, paddle movement and
 launch, and can also run on the gate-level netlist.
 

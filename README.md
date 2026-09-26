@@ -23,11 +23,21 @@ yellow character. Both characters obey the maze walls. The maze is a constant
 map and uses no framebuffer.
 
 All games now use one sequenced movement engine, one lives/session controller,
-and four shared 8-bit position registers. In Breakout/Pong those registers hold
+and four shared 6-bit position registers. In Breakout/Pong those registers hold
 ball X/Y and player/CPU paddle X; in Pacman they hold player X/Y and ghost X/Y.
-One 8-bit add/subtract datapath performs movement and collision arithmetic over
+One 6-bit add/subtract datapath performs movement and collision arithmetic over
 successive clocks. Pacman's eight neighbor checks use one gameplay wall decoder.
 The VGA renderer keeps its own maze lookup for continuous pixel generation.
+Positions use a 64x60 movement grid across the existing 256x240 logical-pixel
+playfield. Each grid unit is four rendering pixels (eight VGA pixels); appending
+two zero bits converts positions for rendering. VGA timing, object sizes, all
+32 bricks and the maze layout remain unchanged.
+
+Inputs and paddles update at 60 Hz. Ball and maze movement update at 30 Hz.
+Paddles move four logical pixels per frame instead of three. Ball X/Y each
+advance four logical pixels per movement tick: vertical speed is unchanged,
+horizontal speed doubles. Pacman and ghost average speed remains unchanged.
+The ball serve height is aligned to logical Y=216 for both paddle games.
 The six-bit `brick_probe` register is also shared: Breakout uses it for the
 brick index and hit flag; Pacman uses bits [2:0] for the requested direction
 and bits [5:3] for the ghost direction. Reset/respawn initializes Pacman's
@@ -41,13 +51,13 @@ Ghost chase rules, controller decoding, and VGA timing remain. Bricks, maze wall
 and the ghost use flat colors. The decorative pellet-score indicator and its
 counter have been removed; lives indicators and mouth animation remain.
 
-Sharing `brick_probe` with Pacman's direction state reduces the local SKY130
-area estimate from 11,094 to 10,814 square micrometers (2.5%), with mapped
-flip-flops decreasing from 185 to 178. Gameplay and the registered win flag
-are unchanged. These estimates are useful only for relative comparisons.
-The preceding revision passed global placement at 96.576% utilization, but
-failed detailed placement after clock-tree synthesis. A new GitHub hardening
-run must establish whether this revision fits a 1x1 tile.
+Coarser coordinates reduce the local SKY130 area estimate from 10,814 to
+10,396 square micrometers (3.9%), with mapped flip-flops decreasing from 178
+to 169. The registered win flag and shared brick-probe/direction storage remain.
+These estimates are useful only for relative comparisons. The preceding revision
+passed global placement at 95.765% utilization, but failed detailed placement
+after clock-tree synthesis. This change is smaller than the estimated reduction
+needed for comfortable placement; a new hardening run must establish 1x1 fit.
 
 The onboard 7-segment display shows the selected game's remaining lives,
 from 3 down to 0. VGA uses `uio_out[7:0]` on BIDIR with all eight output
@@ -129,8 +139,9 @@ The RTL unit test covers DIP debounce, serial controller decoding, stale reports
 movement limits, launch, collision cases, lost lives, win, restart, and
 frame input capture, pausing, reset during an update, and shared-bank mode changes.
 A separate regression compares all three games with behavioral reference engines
-for 10,000 frames each, including disabled frames and restarts. The Pong reference
-includes coarse CPU tracking; directed tests cover all eight CPU columns. Cocotb tests
+for 10,000 frames each, including disabled frames and restarts. The independent references
+use rendering-pixel coordinates and model the new movement rates. Directed tests
+cover all 32 brick cells, all eight CPU columns and alternate-frame movement. Cocotb tests
 inspect the external pins for sync boundaries on every line, blanking, initial
 graphics, opposing directions, movement and launch. They also work on the
 gate-level netlist without accessing internal registers. Simulation uses a
@@ -167,13 +178,13 @@ and placement density have not been changed.
 ## Verification and limits
 
 - RTL unit tests and external video/control simulation have passed locally.
-- FPGA synthesis, placement and routing passed at 25.2 MHz (28.25 MHz reported
-  maximum); the design uses 1,059 of 5,280 FPGA logic cells.
-- An early SKY130 mapping estimates about 10,814 square micrometers of standard
+- FPGA synthesis, placement and routing passed at 25.2 MHz (29.43 MHz reported
+  maximum); the design uses 958 of 5,280 FPGA logic cells.
+- An early SKY130 mapping estimates about 10,396 square micrometers of standard
   cells with all three games. This is a rough synthesis estimate using OpenROAD's SKY130 HD typical
   library, not Tiny Tapeout signoff: it excludes clock-tree and physical overhead.
 - **1x1 ASIC fit remains unverified for this revision.** The previous revision
-  passed global placement at 96.576% but failed detailed placement after clock-tree
+  passed global placement at 95.765% but failed detailed placement after clock-tree
   synthesis; that failure is not a result for this new RTL. GitHub hardening must establish
   routed area, timing, DRC and LVS before this can be called tapeout-ready.
 - Physical VGA display/controller testing is pending; the generated image is

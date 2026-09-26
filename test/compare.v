@@ -4,7 +4,8 @@ module equivalence_case #(parameter MODE=0)(
     input wire clk,rst,ena,frame,left,right,up,down,launch,check,
     input wire [31:0] frame_number
 );
-    wire [7:0] x,y,a,b,rx,ry,ra,rb,rscore;
+    wire [5:0] x,y,a,b;
+    wire [7:0] rx,ry,ra,rb,rscore;
     wire [31:0] bricks,rbricks;
     wire [1:0] lives,state,rlives,rstate;
     wire [2:0] direction,rdirection;
@@ -32,8 +33,8 @@ module equivalence_case #(parameter MODE=0)(
         end
     end endgenerate
     always @(posedge check) begin
-        if({x,y,a,b,lives,state} !== {rx,ry,ra,rb,rlives,rstate})
-            $fatal(1,"Mode %0d frame %0d: actual %h/%h/%h/%h lives/state %d/%d reference %h/%h/%h/%h %d/%d",
+        if({x,2'b0,y,2'b0,a,2'b0,b,2'b0,lives,state} !== {rx,ry,ra,rb,rlives,rstate})
+            $fatal(1,"Mode %0d frame %0d: actual grid %h/%h/%h/%h lives/state %d/%d reference pixels %h/%h/%h/%h %d/%d",
                 MODE,frame_number,x,y,a,b,lives,state,rx,ry,ra,rb,rlives,rstate);
         if(dut.phase!==0) $fatal(1,"Engine did not finish within blanking budget");
     end
@@ -62,7 +63,7 @@ module compare;
             repeat(32) @(negedge clk);
             check=1; #1; check=0;
         end
-        $display("PASS: all three sequential engines match reference gameplay for 10000 frames each");
+        $display("PASS: coarse engines match scaled reference gameplay for 10000 frames each");
         $finish;
     end
     initial begin #100000000; $fatal(1,"Equivalence test timeout"); end

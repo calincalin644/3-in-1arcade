@@ -7,11 +7,11 @@ module unit;
     wire left, right, launch, up, down;
     breakout_controls controls(clk,rst_n,frame,ui,left,right,launch,up,down);
     reg gl=0, gr=0, gf=0;
-    wire [7:0] paddle,bx,by;
+    wire [5:0] paddle,bx,by;
     wire [31:0] bricks;
     wire [1:0] lives,state;
     wire game_lost, game_won, game_done, game_launch;
-    wire [7:0] unused_cpu;
+    wire [5:0] unused_cpu;
     arcade_session game_session(clk,rst_n,ena,game_done,game_launch,game_lost,game_won,lives,state,);
     arcade_engine game(.clk(clk),.rst_n(rst_n),.ena(ena),.frame(frame),
         .left(gl),.right(gr),.up(1'b0),.down(1'b0),.launch(gf),
@@ -19,7 +19,7 @@ module unit;
         .x(bx),.y(by),.a(paddle),.b(unused_cpu),.bricks(bricks),.direction(),.mouth(),
         .lost(game_lost),.won(game_won),.done(game_done),.launch_saved(game_launch));
     reg pl=0, pr=0, pf=0;
-    wire [7:0] pp, cp, pbx, pby;
+    wire [5:0] pp, cp, pbx, pby;
     wire [1:0] plives, pstate;
     wire pong_lost, pong_won, pong_done, pong_launch;
     arcade_session pong_session(clk,rst_n,ena,pong_done,pong_launch,pong_lost,pong_won,plives,pstate,);
@@ -29,7 +29,7 @@ module unit;
         .x(pbx),.y(pby),.a(pp),.b(cp),.bricks(),.direction(),.mouth(),
         .lost(pong_lost),.won(pong_won),.done(pong_done),.launch_saved(pong_launch));
     reg pal=0, par=0, pau=0, pad=0, paf=0;
-    wire [7:0] pacx, pacy, ghostx, ghosty;
+    wire [5:0] pacx, pacy, ghostx, ghosty;
     wire [1:0] paclives, pacstate;
     wire [2:0] pacdir;
     wire pacmouth, pac_lost, pac_won, pac_done, pac_launch;
@@ -78,7 +78,7 @@ module unit;
     reg [4:0] saved_phase;
     initial begin
         reset;
-        if(paddle!==112 || bx!==128 || state!==0 || lives!==3 || bricks!==32'hffffffff)
+        if(paddle!==28 || bx!==32 || state!==0 || lives!==3 || bricks!==32'hffffffff)
             $fatal(1,"Reset state");
         // Bounce rejection and per-button qualification at two frame samples.
         ui[0]=1; clocks(4); tick;
@@ -119,84 +119,73 @@ module unit;
         repeat(122) tick;
         if(left) $fatal(1,"Stale controller held left");
 
-        // Game movement, clamps, opposed inputs, launch.
-        reset; gl=1;
-        repeat(50) tick;
+        // Coarse positions count four logical pixels. Paddles update each frame.
+        reset; gl=1; repeat(60) tick;
         if(paddle!==0) $fatal(1,"Left clamp");
-        gr=1; tick;
-        if(paddle!==0) $fatal(1,"Opposed movement");
-        gl=0; repeat(90) tick;
-        if(paddle!==224) $fatal(1,"Right clamp");
-        gr=0; gf=1; tick; gf=0;
-        if(state!==1) $fatal(1,"Launch does not start");
-        ena=0; tick;
-        if(by!==217) $fatal(1,"ena hold");
-        ena=1;
-        // Directed collision scenarios use only this RTL unit test.
-        @(negedge clk); game.x=253; game.y=150; game.direction[0]=1; game.direction[1]=0;
+        gr=1; tick; if(paddle!==0) $fatal(1,"Opposed directions");
+        gl=0; repeat(60) tick; gr=0;
+        if(paddle!==56) $fatal(1,"Right clamp");
+        gf=1; tick; gf=0;
+        if(state!==1 || by!==54) $fatal(1,"Launch");
+        ena=0; tick; if(by!==54) $fatal(1,"Disabled movement"); ena=1;
+        @(negedge clk); game.x=32; game.y=40; game.direction=1; game.motion_phase=0;
         tick;
-        if(game.direction[0]!==0 || bx!==253) $fatal(1,"Right wall bounce");
-        @(negedge clk); game.x=2; game.direction[0]=0;
+        if(bx!==33 || by!==39) $fatal(1,"First half-rate movement");
         tick;
-        if(game.direction[0]!==1 || bx!==2) $fatal(1,"Left wall bounce");
-        @(negedge clk); game.y=26; game.direction[1]=0;
+        if(bx!==33 || by!==39) $fatal(1,"Movement should skip alternate frames");
         tick;
-        if(game.direction[1]!==1 || by!==26) $fatal(1,"Ceiling bounce");
-        @(negedge clk); game.x=128; game.y=66; game.direction[1]=0; game.direction[0]=1;
-        tick;
-        if(bricks[28]!==0 || game.direction[1]!==1 || by!==66) $fatal(1,"Brick hit");
-        @(negedge clk); game.a=112; game.x=120; game.y=217; game.direction[1]=1;
-        tick;
-        if(game.direction[1]!==0 || by!==217 || game.direction[0]!==0) $fatal(1,"Paddle left bounce");
-        @(negedge clk); game.x=135; game.y=217; game.direction[1]=1;
-        tick;
-        if(game.direction[1]!==0 || game.direction[0]!==1) $fatal(1,"Paddle right bounce");
-        // Missing paddle costs one life and holds for a new launch edge.
-        for(i=2;i>=0;i=i-1) begin
-            @(negedge clk); game.y=235; game_session.state=1;
+        if(bx!==34 || by!==38) $fatal(1,"Second half-rate movement");
+        @(negedge clk); game.x=63; game.motion_phase=0;
+        tick; if(game.direction[0]!==0 || bx!==63) $fatal(1,"Right wall");
+        @(negedge clk); game.x=0; game.motion_phase=0;
+        tick; if(game.direction[0]!==1 || bx!==0) $fatal(1,"Left wall");
+        @(negedge clk); game.y=6; game.direction=1; game.motion_phase=0;
+        tick; if(game.direction[1]!==1) $fatal(1,"Ceiling");
+        // Every brick cell must be reachable, including all row boundaries.
+        for(i=0;i<32;i=i+1) begin
+            @(negedge clk); game.bricks=32'hffffffff;
+            game.x=(i%8)*8+2; game.y=9+(i/8)*2;
+            game.direction=1; game.motion_phase=0;
             tick;
-            if(lives!==i || state!==((i==0)?2:0)) $fatal(1,"Life/game-over transition");
+            if(bricks!==(32'hffffffff ^ (32'b1<<i)) || game.direction[1]!==1)
+                $fatal(1,"Coarse brick collision index %0d",i);
+        end
+        @(negedge clk); game.a=28; game.x=30; game.y=54; game.direction=3; game.motion_phase=0;
+        tick; if(game.direction[1:0]!==0 || by!==54) $fatal(1,"Left paddle bounce");
+        @(negedge clk); game.x=34; game.y=54; game.direction=3; game.motion_phase=0;
+        tick; if(game.direction[1:0]!==1) $fatal(1,"Right paddle bounce");
+        for(i=2;i>=0;i=i-1) begin
+            @(negedge clk); game.y=59; game_session.state=1;
+            tick;
+            if(lives!==i || state!==((i==0)?2:0)) $fatal(1,"Life transition");
         end
         gf=1; tick; gf=0;
         if(state!==0 || lives!==3 || bricks!==32'hffffffff) $fatal(1,"Restart");
-        @(negedge clk); game_session.state=1; game.bricks=0;
-        tick;
-        if(state!==3) $fatal(1,"Win transition");
+        // Keep the registered win behavior: final hit then win on next frame.
+        @(negedge clk); game_session.state=1; game.bricks=32'b1;
+        game.x=2; game.y=9; game.direction=1; game.motion_phase=0;
+        tick; if(bricks!==0 || state!==1) $fatal(1,"Final brick");
+        tick; if(state!==3) $fatal(1,"Registered win timing");
         gf=1; tick; gf=0;
         if(state!==0 || lives!==3 || bricks!==32'hffffffff) $fatal(1,"Win restart");
 
-        // Pong shares the frame-rate update and input contract.
-        reset; pl=1; repeat(10) tick;
-        if(pp >= 112) $fatal(1,"Pong left movement");
-        pl=0; pr=1; repeat(20) tick;
-        if(pp <= 112) $fatal(1,"Pong right movement");
-        pr=0; pf=1; tick; pf=0;
-        if(pstate!==1) $fatal(1,"Pong launch");
-        @(negedge clk); pong.x=120; pong.y=217; pong.a=112;
-        pong.direction[1]=1; tick;
-        if(pong.direction[1]!==0 || pby!==216) $fatal(1,"Pong player bounce");
-        @(negedge clk); pong.x=128; pong.y=26; pong.b=128;
-        pong.direction[1]=0; tick;
-        if(pong.direction[1]!==1 || pby!==26) $fatal(1,"Pong CPU bounce");
-        // Coarse tracking covers all eight columns and remains aligned at
-        // both edges. Collision uses the paddle visible before the update.
+        reset; pf=1; tick; pf=0;
         for(i=0;i<8;i=i+1) begin
-            @(negedge clk); pong_session.state=0; pong.x=i*32+31;
+            @(negedge clk); pong_session.state=1; pong.x=i*8;
+            pong.y=6; pong.b=i*8; pong.direction=1; pong.motion_phase=0;
             tick;
-            if(cp!==i*32 || cp[4:0]!==0) $fatal(1,"CPU column tracking %0d",i);
-            @(negedge clk); pong_session.state=1;
-            pong.x=i*32; pong.y=26; pong.b=i*32; pong.direction=1;
-            tick;
-            if(pong.direction[1:0]!==2'b10 || pby!==26)
-                $fatal(1,"CPU left edge collision %0d",i);
+            if(cp!==i*8 || pong.direction[1:0]!==2'b10 || pby!==6)
+                $fatal(1,"Pong CPU column %0d",i);
         end
-        @(negedge clk); pong_session.state=1;
-        pong.x=63; pong.y=26; pong.b=64; pong.direction=1;
+        @(negedge clk); pong.x=15; pong.y=6; pong.b=16; pong.direction=1; pong.motion_phase=0;
         tick;
-        if(pong.direction[1]!==0 || pby!==24 || cp!==32)
-            $fatal(1,"CPU adjacent-column miss or tracking");
+        if(pong.direction[1]!==0 || pby!==5 || cp!==8) $fatal(1,"Adjacent CPU column miss");
+        @(negedge clk); pong.y=1; tick;
+        if(plives!==2 || pstate!==0) $fatal(1,"Pong upper miss");
+        @(negedge clk); pong_session.state=1; pong.y=59; tick;
+        if(plives!==1 || pstate!==0) $fatal(1,"Pong lower miss");
 
-        // The third mode is a frame-based Pacman maze game.
+        // Collision map must match the displayed maze exactly.
         for(my=0;my<16;my=my+1) begin
             case(my)
                 0: maze_row=16'hffff; 1: maze_row=16'h8001; 2: maze_row=16'h8ff1;
@@ -210,19 +199,14 @@ module unit;
         end
         reset; paf=1; tick; paf=0;
         if(pacstate!==1) $fatal(1,"Pacman launch");
-        par=1; repeat(10) tick; par=0;
-        if(pacx <= 16) $fatal(1,"Pacman right movement");
-        // The red ghost approaches a wall at (11,10) and must turn into the
-        // open corridor above it rather than entering the blocked tile.
-        @(negedge clk); pac.a=12*16; pac.b=10*16;
-        pac.x=16; pac.y=16; pac.brick_probe[5:3]=1;
+        par=1; repeat(8) tick; par=0;
+        if(pacx!==8 || pacy!==4) $fatal(1,"Pacman one cell per eight frames");
+        @(negedge clk); pac.a=12*4; pac.b=10*4; pac.x=4; pac.y=4;
+        pac.brick_probe[5:3]=1; pac.motion_phase=0;
         tick;
-        if(pac.a[7:4]!==12 || pac.b[7:4]!==9)
-            $fatal(1,"Pacman ghost did not turn around wall");
-        @(negedge clk); pac.x=16; pac.y=16;
-        pac.a=16; pac.b=16; pac_session.state=1;
-        tick;
-        if(paclives!==2 || pacstate!==0) $fatal(1,"Pacman collision/life");
+        if(pac.a[5:2]!==12 || pac.b[5:2]!==9) $fatal(1,"Ghost wall turn");
+        @(negedge clk); pac.x=4; pac.y=4; pac.a=4; pac.b=4; pac_session.state=1;
+        tick; if(paclives!==2 || pacstate!==0) $fatal(1,"Pacman life");
         // Inputs belong to the frame request, not the later ALU cycles.
         // Pausing in mid-transaction must hold both phase and position.
         gl=0; gr=1; reset;
@@ -230,10 +214,10 @@ module unit;
         @(negedge clk); frame=0; clocks(2);
         @(negedge clk); ena=0; gl=1; gr=0; saved_phase=game.phase;
         clocks(10);
-        if(game.phase!==saved_phase || paddle!==112 || state!==0)
+        if(game.phase!==saved_phase || paddle!==28 || state!==0)
             $fatal(1,"Paused microsequence advanced");
         @(negedge clk); ena=1; clocks(40);
-        if(paddle!==115 || bx!==131 || game.phase!==0)
+        if(paddle!==29 || bx!==33 || game.phase!==0)
             $fatal(1,"Mid-frame input change corrupted pending movement");
         gl=0;
         // Reset must abort any partially completed maze update.
@@ -241,7 +225,7 @@ module unit;
             reset; @(negedge clk); pac_session.state=1; frame=1; clocks(1);
             @(negedge clk); frame=0; clocks(i);
             reset;
-            if(pac.phase!==0 || pacx!==16 || pacy!==16 || ghostx!==224 || ghosty!==160 || paclives!==3)
+            if(pac.phase!==0 || pacx!==4 || pacy!==4 || ghostx!==56 || ghosty!==40 || paclives!==3)
                 $fatal(1,"Reset failed to abort update at offset %0d",i);
         end
         top_ui=8'h88; reset;
@@ -285,7 +269,7 @@ module unit;
                 if(mode==3) begin
                     top_dut.engine.x=16; top_dut.engine.y=16;
                     top_dut.engine.a=16; top_dut.engine.b=16;
-                end else top_dut.engine.y=240;
+                end else top_dut.engine.y=60;
                 top_tick;
                 if(top_dut.lives!==i || top_dut.state!==((i==0)?2:0))
                     $fatal(1,"Shared life loss: mode=%0d remaining=%0d",mode,i);
