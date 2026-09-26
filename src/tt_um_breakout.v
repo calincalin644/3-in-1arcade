@@ -205,11 +205,13 @@ module arcade_engine (
     (* fsm_encoding = "none" *) reg [4:0] phase;
     reg alu_ready;
     reg [4:0] buttons;
-    reg [2:0] wanted, ghost_dir;
     // Maze: {down,up,right,left}; paddles: {CPU direction,CPU hit,
     // player direction,player hit}. These uses never overlap.
     reg [3:0] flags;
     reg [5:0] brick_probe;
+    // Same physical bits: brick collision probe or Pacman directions.
+    wire [2:0] wanted = brick_probe[2:0];
+    wire [2:0] ghost_dir = brick_probe[5:3];
     assign done = phase == FINISH && alu_ready;
     assign launch_saved = buttons[4];
     wire [7:0] serve_y = pong_mode ? 8'd216 : 8'd217;
@@ -282,14 +284,13 @@ module arcade_engine (
 
     always @(posedge clk) begin
         if (!rst_n) begin
-            phase <= IDLE; buttons <= 0; flags <= 0; brick_probe <= 0;
+            phase <= IDLE; buttons <= 0; flags <= 0; brick_probe <= {LEFT, RIGHT};
             alu_result <= 0; alu_ready <= 0;
             x <= pacman_mode ? 8'd16 : 8'd128;
             y <= pacman_mode ? 8'd16 : serve_y;
             a <= pacman_mode ? 8'd224 : 8'd112;
             b <= pacman_mode ? 8'd160 : (pong_mode ? 8'd96 : 8'd112);
             direction <= pacman_mode ? RIGHT : {1'b0, pong_mode, 1'b1};
-            wanted <= RIGHT; ghost_dir <= LEFT;
             bricks <= 32'hffffffff; mouth <= 0;
             lost <= 0; won <= 0;
         end else if (ena) begin
@@ -304,7 +305,7 @@ module arcade_engine (
                     if (pacman_mode) begin
                         if ((state == SERVE || state[1]) && launch) begin
                             x<=16; y<=16; a<=224; b<=160;
-                            direction<=RIGHT; wanted<=RIGHT; ghost_dir<=LEFT; mouth<=0;
+                            direction<=RIGHT; brick_probe[2:0] <=RIGHT; brick_probe[5:3] <=LEFT; mouth<=0;
                             phase<=FINISH;
                         end else if (state == PLAY) begin
                             mouth <= !mouth;
@@ -368,7 +369,7 @@ module arcade_engine (
                     if (phase[1:0] == 3) phase <= phase[2] ? P_CHOOSE : G_CHOOSE;
                     else phase <= phase + 1'b1;
                 end
-                G_CHOOSE: begin ghost_dir<=ghost_turn; phase<=G_STEP; end
+                G_CHOOSE: begin brick_probe[5:3] <=ghost_turn; phase<=G_STEP; end
                 G_STEP: begin
                     if (ghost_dir==LEFT || ghost_dir==RIGHT) a<=alu_result;
                     else if (ghost_dir==UP || ghost_dir==DOWN) b<=alu_result;
@@ -384,10 +385,10 @@ module arcade_engine (
                     phase<=P_INPUT;
                 end
                 P_INPUT: begin
-                    if (buttons[0]) wanted<=LEFT;
-                    else if (buttons[1]) wanted<=RIGHT;
-                    else if (buttons[2]) wanted<=UP;
-                    else if (buttons[3]) wanted<=DOWN;
+                    if (buttons[0]) brick_probe[2:0] <=LEFT;
+                    else if (buttons[1]) brick_probe[2:0] <=RIGHT;
+                    else if (buttons[2]) brick_probe[2:0] <=UP;
+                    else if (buttons[3]) brick_probe[2:0] <=DOWN;
                     phase<=FINISH;
                 end
                 default: phase<=IDLE;

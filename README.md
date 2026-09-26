@@ -28,6 +28,10 @@ ball X/Y and player/CPU paddle X; in Pacman they hold player X/Y and ghost X/Y.
 One 8-bit add/subtract datapath performs movement and collision arithmetic over
 successive clocks. Pacman's eight neighbor checks use one gameplay wall decoder.
 The VGA renderer keeps its own maze lookup for continuous pixel generation.
+The six-bit `brick_probe` register is also shared: Breakout uses it for the
+brick index and hit flag; Pacman uses bits [2:0] for the requested direction
+and bits [5:3] for the ghost direction. Reset/respawn initializes Pacman's
+directions, and Breakout writes a fresh probe before every collision decision.
 
 Inputs are captured at the start of vertical blanking. The longest update completes
 within 32 pixel clocks (1.27 microseconds at 25.2 MHz), well before visible video
@@ -37,12 +41,13 @@ Ghost chase rules, controller decoding, and VGA timing remain. Bricks, maze wall
 and the ghost use flat colors. The decorative pellet-score indicator and its
 counter have been removed; lives indicators and mouth animation remain.
 
-The shared movement engine reduced the local SKY130 estimate from 13,439 to
-11,437 square micrometers. Coarse CPU tracking and simpler rendering reduce it
-further to 11,094 square micrometers (another 3.0%). These estimates are useful
-only for relative comparisons. The last reported SKY 26d placement failed at
-102.147% utilization before these latest changes. A new GitHub hardening run
-must establish whether this revision fits a 1x1 tile.
+Sharing `brick_probe` with Pacman's direction state reduces the local SKY130
+area estimate from 11,094 to 10,814 square micrometers (2.5%), with mapped
+flip-flops decreasing from 185 to 178. Gameplay and the registered win flag
+are unchanged. These estimates are useful only for relative comparisons.
+The preceding revision passed global placement at 96.576% utilization, but
+failed detailed placement after clock-tree synthesis. A new GitHub hardening
+run must establish whether this revision fits a 1x1 tile.
 
 The onboard 7-segment display shows the selected game's remaining lives,
 from 3 down to 0. VGA uses `uio_out[7:0]` on BIDIR with all eight output
@@ -162,13 +167,14 @@ and placement density have not been changed.
 ## Verification and limits
 
 - RTL unit tests and external video/control simulation have passed locally.
-- FPGA synthesis, placement and routing passed at 25.2 MHz (28.42 MHz reported
-  maximum); the design uses 1,070 of 5,280 FPGA logic cells.
-- An early SKY130 mapping estimates about 11,094 square micrometers of standard
+- FPGA synthesis, placement and routing passed at 25.2 MHz (28.25 MHz reported
+  maximum); the design uses 1,059 of 5,280 FPGA logic cells.
+- An early SKY130 mapping estimates about 10,814 square micrometers of standard
   cells with all three games. This is a rough synthesis estimate using OpenROAD's SKY130 HD typical
   library, not Tiny Tapeout signoff: it excludes clock-tree and physical overhead.
 - **1x1 ASIC fit remains unverified for this revision.** The previous revision
-  failed SKY 26d placement at 102.147%; that failure is not a result for this new RTL. GitHub hardening must establish
+  passed global placement at 96.576% but failed detailed placement after clock-tree
+  synthesis; that failure is not a result for this new RTL. GitHub hardening must establish
   routed area, timing, DRC and LVS before this can be called tapeout-ready.
 - Physical VGA display/controller testing is pending; the generated image is
   from simulation. No numeric score, sound, acceleration or framebuffer is included.

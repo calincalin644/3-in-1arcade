@@ -215,7 +215,7 @@ module unit;
         // The red ghost approaches a wall at (11,10) and must turn into the
         // open corridor above it rather than entering the blocked tile.
         @(negedge clk); pac.a=12*16; pac.b=10*16;
-        pac.x=16; pac.y=16; pac.ghost_dir=1;
+        pac.x=16; pac.y=16; pac.brick_probe[5:3]=1;
         tick;
         if(pac.a[7:4]!==12 || pac.b[7:4]!==9)
             $fatal(1,"Pacman ghost did not turn around wall");
@@ -257,6 +257,8 @@ module unit;
                 $fatal(1,"Display reset or VGA output enables");
             if(top_dut.pos_x!==((mode==3)?16:128) || top_dut.aux_x!==((mode==3)?224:112))
                 $fatal(1,"Shared position bank did not reset for selected game");
+            if(mode==3 && (top_dut.engine.wanted!==3'd2 || top_dut.engine.ghost_dir!==3'd1))
+                $fatal(1,"Shared probe direction initialization after mode switch");
             for(i=0;i<4;i=i+1) begin
                 @(negedge clk);
                 top_dut.session.lives=i;

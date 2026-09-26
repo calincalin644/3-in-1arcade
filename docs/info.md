@@ -19,6 +19,11 @@ Four 8-bit position registers serve ball X/Y and paddle X positions in Breakout/
 or player X/Y and ghost X/Y in Pacman. Movement and offset calculations use a shared
 8-bit add/subtract datapath. A single gameplay wall decoder checks the eight maze
 neighbors in successive operations; the renderer has its own wall lookup.
+The six-bit brick collision probe doubles as Pacman direction storage: bits
+[2:0] hold the requested player direction and [5:3] hold the ghost direction.
+Reset and respawn initialize the directions; Breakout overwrites the probe
+before using it. This removes separate direction registers without changing
+movement or victory timing.
 
 Controls are captured at vertical blanking. Updates complete within 32 pixel clocks;
 the renderer sees the completed positions before the next active frame. Each
