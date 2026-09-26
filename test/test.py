@@ -45,7 +45,7 @@ async def video_and_controls(dut):
             if h >= 640 or line >= 480:
                 assert rgb(value) == (0, 0, 0), (h, line, value)
     assert int(dut.uio_oe.value) == 0xff
-    assert int(dut.uo_out.value) == 0x4f  # Three lives, decimal point off.
+    assert int(dut.uo_out.value) == 0x49  # Three horizontal life bars, decimal point off.
 
     # Known initial image: row colors, brick gaps, paddle, ball, life indicators.
     samples = [(72, 24, {(3, 3, 3)}), (584, 24, {(0, 0, 0)}),

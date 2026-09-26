@@ -69,18 +69,9 @@ module tt_um_breakout (
     // VGA uses BIDIR so OUTPUT can drive the onboard seven-segment display.
     assign uio_out = video;
     assign uio_oe = 8'hff;
-    reg [6:0] segments;
-    always @* begin
-        // Active-high segments g..a; decimal point remains off.
-        case (lives)
-            0: segments = 7'b0111111;
-            1: segments = 7'b0000110;
-            2: segments = 7'b1011011;
-            3: segments = 7'b1001111;
-            default: segments = 7'b0000000;
-        endcase
-    end
-    assign uo_out = {1'b0, segments};
+    // Active-high horizontal bars: a (top), g (middle), d (bottom).
+    // 0 lives: blank; 1: bottom; 2: bottom+middle; 3: all three.
+    assign uo_out = {1'b0, lives[1], 2'b0, (|lives), 2'b0, (&lives)};
     wire unused = &{1'b0, uio_in, h[0], v[9], v[0]};
 endmodule
 
@@ -184,7 +175,7 @@ module arcade_session (
     end
 endmodule
 
-// One position bank and one 8-bit movement ALU serve all three games.
+// One position bank and one 6-bit movement ALU serve all three games.
 // A frame request starts a bounded sequence during vertical blanking. The
 // session controller commits lives/state only when done is asserted.
 module arcade_engine (
@@ -289,6 +280,21 @@ module arcade_engine (
         b[5:2] < y[5:2] && flags[3] ? DOWN :
         flags[0] ? LEFT : flags[1] ? RIGHT : flags[2] ? UP : flags[3] ? DOWN : STOP;
 
+    // Explicit per-brick next-state logic avoids a variable-index write mux.
+    // Reset/restart restores the bank; only an unmasked brick collision clears
+    // its selected bit. Paddle and top-wall collisions retain their priority.
+    wire brick_reset = phase == IDLE && frame && !pacman_mode && state[1] && launch;
+    wire brick_clear = phase == BALL_Y && alu_ready && !pong_mode && brick_probe[5] &&
+                       !(!direction[1] && y <= 6) && !flags[0];
+    genvar bi;
+    generate for (bi=0; bi<16; bi=bi+1) begin: brick_storage
+        always @(posedge clk) begin
+            if (!rst_n) bricks[bi] <= 1'b1;
+            else bricks[bi] <= (ena && brick_reset) ||
+                (bricks[bi] && !(ena && brick_clear && brick_probe[3:0] == bi));
+        end
+    end endgenerate
+
     always @(posedge clk) begin
         if (!rst_n) begin
             phase <= IDLE; buttons <= 0; flags <= 0; brick_probe <= {LEFT, RIGHT};
@@ -298,7 +304,7 @@ module arcade_engine (
             a <= pacman_mode ? 6'd56 : 6'd28;
             b <= pacman_mode ? 6'd40 : (pong_mode ? 6'd24 : 6'd28);
             direction <= pacman_mode ? RIGHT : {1'b0, pong_mode, 1'b1};
-            bricks <= 16'hffff; mouth <= 0;
+            mouth <= 0;
             lost <= 0; won <= 0;
         end else if (ena) begin
             alu_result <= alu_value;
@@ -322,7 +328,7 @@ module arcade_engine (
                         end else phase <= P_INPUT;
                     end else if (state[1] && launch) begin
                         x<=32; y<=serve_y; a<=28; b<=pong_mode ? 6'd24 : 6'd28;
-                        bricks<=16'hffff; phase<=FINISH;
+                        phase<=FINISH;
                     end else phase<=PLAYER_CHECK;
                 end
                 PLAYER_CHECK: begin
@@ -367,7 +373,7 @@ module arcade_engine (
                     end else if (pong_mode && flags[2]) begin
                         y<=6; direction[1:0]<={1'b1,flags[3]};
                     end else if (!pong_mode && brick_probe[5]) begin
-                        bricks[brick_probe[3:0]]<=0; direction[1]<=!direction[1];
+                        direction[1]<=!direction[1];
                     end else y<=alu_result;
                     phase<=FINISH;
                 end

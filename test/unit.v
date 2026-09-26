@@ -73,7 +73,7 @@ module unit;
         end
     endtask
     integer i, mode, mx, my;
-    reg [7:0] expected_digit;
+    reg [7:0] expected_bars;
     reg [15:0] maze_row;
     reg [4:0] saved_phase;
     initial begin
@@ -237,7 +237,7 @@ module unit;
         for(mode=0;mode<4;mode=mode+1) begin
             top_ui = ((mode & 2) << 6) | ((mode & 1) << 3);
             reset;
-            if(top_uo!==8'h4f || top_oe!==8'hff)
+            if(top_uo!==8'h49 || top_oe!==8'hff)
                 $fatal(1,"Display reset or VGA output enables");
             if(top_dut.pos_x!==((mode==3)?16:128) || top_dut.aux_x!==((mode==3)?224:112))
                 $fatal(1,"Shared position bank did not reset for selected game");
@@ -248,13 +248,13 @@ module unit;
                 top_dut.session.lives=i;
                 clocks(1);
                 case(i)
-                    0: expected_digit=8'h3f;
-                    1: expected_digit=8'h06;
-                    2: expected_digit=8'h5b;
-                    3: expected_digit=8'h4f;
+                    0: expected_bars=8'h00;
+                    1: expected_bars=8'h08;
+                    2: expected_bars=8'h48;
+                    3: expected_bars=8'h49;
                 endcase
-                if(top_uo!==expected_digit)
-                    $fatal(1,"Wrong lives digit: mode=%0d lives=%0d out=%h", mode,i,top_uo);
+                if(top_uo!==expected_bars)
+                    $fatal(1,"Wrong lives bars: mode=%0d lives=%0d out=%h", mode,i,top_uo);
             end
             force top_dut.launch=1'b1; top_tick; release top_dut.launch;
             if(top_dut.state!==1) $fatal(1,"Selected game did not launch");
@@ -275,7 +275,7 @@ module unit;
                     $fatal(1,"Shared life loss: mode=%0d remaining=%0d",mode,i);
             end
             force top_dut.launch=1'b1; top_tick; release top_dut.launch;
-            if(top_uo!==8'h4f || top_dut.state!==0)
+            if(top_uo!==8'h49 || top_dut.state!==0)
                 $fatal(1,"Shared session restart");
             if(mode==3 && (top_dut.pac_x!==16 || top_dut.pac_y!==16))
                 $fatal(1,"Maze restart");

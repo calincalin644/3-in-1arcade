@@ -22,6 +22,8 @@ neighbors in successive operations; the renderer has its own wall lookup.
 The six-bit brick collision probe holds `{hit, unused, row, column}` in Breakout
 and doubles as Pacman direction storage: bits
 [2:0] hold the requested player direction and [5:3] hold the ghost direction.
+The 16-bit brick bitmap uses explicit per-bit next-state logic for clear/reset,
+avoiding a variable-index write mux while retaining the same collision priority.
 Reset and respawn initialize the directions; Breakout overwrites the probe
 before using it. This removes separate direction registers without changing
 movement or victory timing.
@@ -54,8 +56,9 @@ White blocks at the upper left show remaining lives. A red center bar means
 game over; a green bar means all bricks were cleared. Launch/restart starts a
 fresh game from either end state, and a second press launches its ball.
 
-The onboard 7-segment display shows the selected game's remaining lives,
-from 3 down to 0. VGA uses `uio_out[7:0]` on BIDIR with all eight output
+The onboard 7-segment display shows the selected game's remaining lives as
+horizontal bars: bottom for one, bottom + middle for two, all three for three,
+and blank for zero. Vertical segments and the decimal point remain off. VGA uses `uio_out[7:0]` on BIDIR with all eight output
 enables set; `uo_out[6:0]` drives segments a through g, and the decimal point
 is off. Move the VGA PMOD from OUTPUT to BIDIR when upgrading an older build.
 The loader leaves the RP2350 bidirectional pins as inputs.
