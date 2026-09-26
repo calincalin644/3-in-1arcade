@@ -8,7 +8,8 @@ is held. Holding both directions stops it.
 
 Set `ui_in[3]` high during reset to select Pong. Pong uses the same video timing
 and controls, with the player paddle at the bottom and a simple CPU paddle at
-the top. Launch starts a rally; missing either paddle costs a life. Set both
+the top. The CPU snaps to the ball's 32-logical-pixel column each frame,
+with collision checks on those same column boundaries. Launch starts a rally; missing either paddle costs a life. Set both
 `ui_in[3]` and `ui_in[7]` high during reset to select the Pacman-style maze.
 Pacman uses a constant tile map, pellets, a moving ghost and four-direction
 gamepad controls without a framebuffer; launch starts a life.
@@ -30,10 +31,9 @@ The display uses standard Tiny VGA RGB222 wiring (64 available colors),
 800 clocks per line and 525 lines per frame give exactly 60 frames per second.
 Horizontal sync is active low for pixels 656..751, and vertical sync for lines
 490..491. RGB is black during blanking. Game updates occur in vertical blanking.
-No framebuffer, external memory, or programmable palette is used. Bricks have
-one-pixel logical mortar seams, alternating edge highlights and shadows, and a
-small deterministic coordinate-based texture. The pattern repeats predictably,
-so it costs only logic and remains stable across frames.
+No framebuffer, external memory, or programmable palette is used. Bricks use
+flat row colors with black gaps. Maze walls and the ghost also use flat colors.
+Decorative shading and the pellet-score indicator have been removed to save area.
 
 White blocks at the upper left show remaining lives. A red center bar means
 game over; a green bar means all bricks were cleared. Launch/restart starts a
@@ -87,7 +87,8 @@ the management microcontroller from driving these inputs.
 
 RTL unit tests cover input conditioning, directed game states, frame input capture,
 pausing and reset during an update. Reference simulations compare all three games
-with the previous engines over 10,000 frames each. The external
+with behavioral reference engines over 10,000 frames each; the Pong reference
+includes coarse CPU tracking, with directed tests for all eight CPU columns. The external
 pin tests cover sync boundaries, blanking, initial colors, paddle movement and
 launch, and can also run on the gate-level netlist.
 

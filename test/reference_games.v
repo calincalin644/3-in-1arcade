@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// Frozen pre-sequencing engines, used only for simulation equivalence.
+// Pre-sequencing behavioral models, used only for simulation. COARSE_CPU
+// enables the intentional coarse Pong tracking change; other physics are frozen.
 // Shared life counter and serve/play/game-over/win state machine.
 module reference_session (
     input wire clk, rst_n, ena, frame, launch, lost, won,
@@ -29,7 +30,7 @@ endmodule
 // Breakout and one-player Pong share the ball, player paddle, movement
 // arithmetic and wall/paddle collisions. Bricks and the CPU remain specific
 // to their respective games; pong_mode is held constant between resets.
-module reference_paddle_game (
+module reference_paddle_game #(parameter COARSE_CPU=0) (
     input wire clk, rst_n, ena, frame, left, right, pong_mode,
     input wire [1:0] state,
     input wire restart,
@@ -43,7 +44,7 @@ module reference_paddle_game (
     wire [7:0] paddle_next = left == right ? paddle :
         (left ? ((paddle < 3) ? 8'd0 : paddle - 8'd3) :
                 ((paddle > 221) ? 8'd224 : paddle + 8'd3));
-    wire [7:0] cpu_next = ball_x[7:5] > cpu_paddle[7:5] && cpu_paddle < 224 ? cpu_paddle + 1'b1 :
+    wire [7:0] cpu_next = COARSE_CPU ? ((ball_x / 32) * 32) : ball_x[7:5] > cpu_paddle[7:5] && cpu_paddle < 224 ? cpu_paddle + 1'b1 :
                            ball_x[7:5] < cpu_paddle[7:5] && cpu_paddle > 0 ? cpu_paddle - 1'b1 : cpu_paddle;
     wire side = dx_right ? ball_x >= 253 : ball_x <= 2;
     wire [7:0] next_x = side ? ball_x :
@@ -67,20 +68,20 @@ module reference_paddle_game (
     wire player_hit = dy_down && ball_y >= 216 &&
         (pong_mode ? ball_y < 220 : ball_y < 218) && paddle_offset < 32;
     wire ceiling_hit = !dy_down && ball_y <= 26;
-    wire cpu_hit = ceiling_hit && ball_y > 22 && cpu_offset < 32;
+    wire cpu_hit = ceiling_hit && ball_y > 22 && (COARSE_CPU ? ball_x / 32 == cpu_paddle / 32 : cpu_offset < 32);
     assign lost = pong_mode ? (ball_y >= 236 || ball_y <= 4) : ball_y >= 235;
     assign won = !pong_mode && bricks == 0;
 
     always @(posedge clk) begin
         if (!rst_n) begin
-            paddle <= 112; cpu_paddle <= 112; ball_x <= 128; ball_y <= serve_y;
+            paddle <= 112; cpu_paddle <= COARSE_CPU ? 8'd96 : 8'd112; ball_x <= 128; ball_y <= serve_y;
             bricks <= 32'hffffffff;
             dx_right <= 1; dy_down <= pong_mode;
         end else if (ena && frame) begin
             paddle <= paddle_next;
             if (pong_mode) cpu_paddle <= cpu_next;
             if (restart) begin
-                paddle <= 112; cpu_paddle <= 112; ball_x <= 128; ball_y <= serve_y;
+                paddle <= 112; cpu_paddle <= COARSE_CPU ? 8'd96 : 8'd112; ball_x <= 128; ball_y <= serve_y;
                 bricks <= 32'hffffffff;
             end else if (state == SERVE) begin
                 ball_x <= paddle_next + 8'd16; ball_y <= serve_y;

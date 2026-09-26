@@ -4,13 +4,13 @@ module equivalence_case #(parameter MODE=0)(
     input wire clk,rst,ena,frame,left,right,up,down,launch,check,
     input wire [31:0] frame_number
 );
-    wire [7:0] x,y,a,b,score,rx,ry,ra,rb,rscore;
+    wire [7:0] x,y,a,b,rx,ry,ra,rb,rscore;
     wire [31:0] bricks,rbricks;
     wire [1:0] lives,state,rlives,rstate;
     wire [2:0] direction,rdirection;
     wire mouth,rmouth,lost,won,done,launch_saved,rlost,rwon,restart;
     arcade_engine dut(clk,rst,ena,frame,left,right,up,down,launch,
-        MODE==1,MODE==2,state,x,y,a,b,bricks,score,direction,mouth,lost,won,done,launch_saved);
+        MODE==1,MODE==2,state,x,y,a,b,bricks,direction,mouth,lost,won,done,launch_saved);
     arcade_session session(clk,rst,ena,done,launch_saved,lost,won,lives,state,);
     reference_session ref_session(clk,rst,ena,frame,launch,rlost,rwon,rlives,rstate,restart);
     generate if(MODE==2) begin: maze
@@ -18,12 +18,12 @@ module equivalence_case #(parameter MODE=0)(
             rx,ry,ra,rb,rdirection,rmouth,rscore,rlost);
         assign rwon=0;
         always @(posedge check) begin
-            if({direction,mouth,score,dut.wanted,dut.ghost_dir} !==
-               {rdirection,rmouth,rscore,reference_game.wanted,reference_game.ghost_dir})
+            if({direction,mouth,dut.wanted,dut.ghost_dir} !==
+               {rdirection,rmouth,reference_game.wanted,reference_game.ghost_dir})
                 $fatal(1,"Maze animation/steering differs at frame %0d",frame_number);
         end
     end else begin: paddle
-        reference_paddle_game reference_game(clk,rst,ena,frame,left,right,MODE==1,rstate,restart,
+        reference_paddle_game #(.COARSE_CPU(MODE==1)) reference_game(clk,rst,ena,frame,left,right,MODE==1,rstate,restart,
             ra,rb,rx,ry,rbricks,rlost,rwon);
         always @(posedge check) begin
             if({direction[1:0],bricks} !==

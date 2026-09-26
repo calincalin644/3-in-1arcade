@@ -28,7 +28,7 @@ module tt_um_breakout (
         end
     end
 
-    wire [7:0] pos_x, pos_y, aux_x, aux_y, pac_score;
+    wire [7:0] pos_x, pos_y, aux_x, aux_y;
     wire [31:0] bricks;
     wire [1:0] lives, state;
     wire lost, won, done, launch_saved;
@@ -38,7 +38,7 @@ module tt_um_breakout (
                             lost, won, lives, state, /* restart unused */);
     arcade_engine engine(clk, rst_n, ena, frame, left, right, up, down,
         launch, pong_mode, pacman_mode, state,
-        pos_x, pos_y, aux_x, aux_y, bricks, pac_score, pac_dir, pac_mouth,
+        pos_x, pos_y, aux_x, aux_y, bricks, pac_dir, pac_mouth,
         lost, won, done, launch_saved);
     // One physical bank: ball/Pacman (x,y), paddle/ghost-x (a), CPU/ghost-y (b).
     wire [7:0] paddle=aux_x, cpu_paddle=aux_y, ball_x=pos_x, ball_y=pos_y;
@@ -52,7 +52,7 @@ module tt_um_breakout (
                                selected_bricks, lives, state, rgb_game);
     pacman_renderer pac_renderer(h[9:1], v[8:1], active,
                                   pac_x, pac_y, ghost_x, ghost_y,
-                                  pac_dir, pac_mouth, pac_score,
+                                  pac_dir, pac_mouth,
                                   lives, state, rgb_pacman);
     wire [5:0] rgb = pacman_mode ? rgb_pacman : rgb_game;
     // Tiny VGA PMOD: {HS, B0, G0, R0, VS, B1, G1, R1}.
@@ -189,7 +189,6 @@ module arcade_engine (
     input wire [1:0] state,
     output reg [7:0] x, y, a, b,
     output reg [31:0] bricks,
-    output reg [7:0] score,
     output reg [2:0] direction,
     output reg mouth,
     output reg lost, won,
@@ -217,8 +216,6 @@ module arcade_engine (
     wire aligned = x[3:0] == 0 && y[3:0] == 0;
     wire ghost_aligned = a[3:0] == 0 && b[3:0] == 0;
     wire side = direction[0] ? x >= 253 : x <= 2;
-    wire cpu_right = x[7:5] > b[7:5];
-    wire cpu_left = x[7:5] < b[7:5];
 
     // Exactly one gameplay wall decoder. Four neighbors of each character
     // are queried on consecutive clocks; the visible maze map is unchanged.
@@ -248,9 +245,7 @@ module arcade_engine (
         source_select = 0; alu_b = 0; subtract = 0;
         case (phase)
             PLAYER_CHECK: begin source_select=0; alu_b=a; subtract=1; end
-            CPU_CHECK: begin source_select=0; alu_b=b; subtract=1; end
             PLAYER_STEP: begin source_select=2; alu_b=buttons[0] ? 8'hfd : 8'd3; end
-            CPU_STEP: begin source_select=3; alu_b=cpu_right ? 8'd1 : 8'hff; end
             SERVE_BALL: begin source_select=2; alu_b=8'd16; end
             BALL_X: begin source_select=0; alu_b=direction[0] ? 8'd1 : 8'hff; end
             BRICK_CHECK: begin source_select=1; alu_b=direction[1] ? 8'd4 : 8'hfc; end
@@ -292,10 +287,10 @@ module arcade_engine (
             x <= pacman_mode ? 8'd16 : 8'd128;
             y <= pacman_mode ? 8'd16 : serve_y;
             a <= pacman_mode ? 8'd224 : 8'd112;
-            b <= pacman_mode ? 8'd160 : 8'd112;
+            b <= pacman_mode ? 8'd160 : (pong_mode ? 8'd96 : 8'd112);
             direction <= pacman_mode ? RIGHT : {1'b0, pong_mode, 1'b1};
             wanted <= RIGHT; ghost_dir <= LEFT;
-            bricks <= 32'hffffffff; score <= 0; mouth <= 0;
+            bricks <= 32'hffffffff; mouth <= 0;
             lost <= 0; won <= 0;
         end else if (ena) begin
             alu_result <= alu_value;
@@ -310,15 +305,13 @@ module arcade_engine (
                         if ((state == SERVE || state[1]) && launch) begin
                             x<=16; y<=16; a<=224; b<=160;
                             direction<=RIGHT; wanted<=RIGHT; ghost_dir<=LEFT; mouth<=0;
-                            if (state[1]) score<=0;
                             phase<=FINISH;
                         end else if (state == PLAY) begin
                             mouth <= !mouth;
-                            if (aligned) score <= score + 1'b1;
                             phase <= ghost_aligned ? G_SCAN : G_STEP;
                         end else phase <= P_INPUT;
                     end else if (state[1] && launch) begin
-                        x<=128; y<=serve_y; a<=112; b<=112;
+                        x<=128; y<=serve_y; a<=112; b<=pong_mode ? 8'd96 : 8'd112;
                         bricks<=32'hffffffff; phase<=FINISH;
                     end else phase<=PLAYER_CHECK;
                 end
@@ -328,8 +321,9 @@ module arcade_engine (
                     flags[1] <= alu_result[4]; phase<=CPU_CHECK;
                 end
                 CPU_CHECK: begin
-                    flags[2] <= !direction[1] && y <= 26 && y > 22 && alu_result[7:5] == 0;
-                    flags[3] <= alu_result[4]; phase<=PLAYER_STEP;
+                    // The rendered CPU paddle occupies one whole 32-pixel bin.
+                    flags[2] <= !direction[1] && y <= 26 && y > 22 && x[7:5] == b[7:5];
+                    flags[3] <= x[4]; phase<=PLAYER_STEP;
                 end
                 PLAYER_STEP: begin
                     if (buttons[0] != buttons[1])
@@ -338,7 +332,9 @@ module arcade_engine (
                     phase<=CPU_STEP;
                 end
                 CPU_STEP: begin
-                    if (pong_mode && ((cpu_right && b < 224) || (cpu_left && b > 0))) b<=alu_result;
+                    // Coarse tracking: snap to the ball's current 32-pixel
+                    // column. Low bits stay zero, matching the drawn paddle.
+                    if (pong_mode) b <= {x[7:5],5'b0};
                     if (state == SERVE) phase<=SERVE_BALL;
                     else if (state == PLAY && !lost && !won) phase<=BALL_X;
                     else phase<=FINISH;
@@ -407,7 +403,6 @@ module pacman_renderer (
     input wire [7:0] pac_x, pac_y, ghost_x, ghost_y,
     input wire [2:0] pac_dir,
     input wire pac_mouth,
-    input wire [7:0] score,
     input wire [1:0] lives, state,
     output reg [5:0] rgb
 );
@@ -446,26 +441,20 @@ module pacman_renderer (
                        x[3:0] >= 4 && x[3:0] <= 11 &&
                        y[3:0] >= 4 && y[3:0] <= 11;
     wire life_icon = y[7:2] == 0 &&
-        ((x[7:2] == 9 && lives >= 1) ||
-         (x[7:2] == 11 && lives >= 2) ||
-         (x[7:2] == 13 && lives >= 3));
-    wire score_icon = y[7:2] == 1 &&
-        ((x[7:2] == 20 && score >= 1) ||
-         (x[7:2] == 22 && score >= 2) ||
-         (x[7:2] == 24 && score >= 3) ||
-         (x[7:2] == 26 && score >= 4));
-
+        ((x[8:2] == 9 && lives >= 1) ||
+         (x[8:2] == 11 && lives >= 2) ||
+         (x[8:2] == 13 && lives >= 3));
     always @* begin
         rgb = 0;
         if (active) begin
             if (in_maze) begin
                 if (wall)
-                    rgb = (x[3] || y[3]) ? 6'b00_00_11 : 6'b00_01_11;
+                    rgb = 6'b00_00_11;
                 else if (pellet) rgb = 6'b11_11_00;
             end
-            if (ghost_shape) rgb = (x[2] ^ y[2]) ? 6'b11_00_00 : 6'b10_00_00;
+            if (ghost_shape) rgb = 6'b11_00_00;
             if (pac_shape && !mouth_cut) rgb = 6'b11_11_00;
-            if (life_icon || score_icon) rgb = 6'b11_11_11;
+            if (life_icon) rgb = 6'b11_11_11;
             if (state[1] && x >= 120 && x < 200 && y >= 112 && y < 118)
                 rgb = 6'b11_00_00;
         end
@@ -492,41 +481,25 @@ module breakout_renderer (
     wire ball = x[8:4] == ball_cell_x && y[7:4] == ball_cell_y &&
                 x[3:2] == ball_x[3:2] && y[3:2] == ball_y[3:2];
     wire [4:0] brick_index = {y[4:3], px[7:5]};
-    wire brick_mortar = (px[4:0] == 0 || px[4:0] == 31 ||
-                         y[2:0] == 0 || y[2:0] == 7);
-    // A tiny deterministic cellular pattern acts like a coarse, repeatable
-    // surface texture. It uses only coordinate bits: no ROM or framebuffer.
-    wire brick_fractal = ((px[0] ^ px[2]) & (y[0] ^ y[1])) ^
-                         ((px[1] & y[2]) | (px[3] ^ y[1]));
-    wire brick_highlight = (px[1:0] == 0 && y[2:1] == 1) ||
-                           (!brick_fractal && y[2:1] == 0);
     wire brick = y >= 32 && y < 64 && bricks[brick_index] &&
                  px[4:0] >= 1 && px[4:0] < 31 && y[2:0] >= 1 && y[2:0] < 7;
     wire [7:0] paddle_delta = px - paddle;
     wire life_icon = y[7:2] == 3 &&
-        ((x[7:2] == 9 && lives >= 1) ||
-         (x[7:2] == 11 && lives >= 2) ||
-         (x[7:2] == 13 && lives >= 3));
+        ((x[8:2] == 9 && lives >= 1) ||
+         (x[8:2] == 11 && lives >= 2) ||
+         (x[8:2] == 13 && lives >= 3));
     always @* begin
         rgb = 0;
         if (active) begin
             if (((x == 30 || x == 289) && y >= 24) ||
                 (y == 24 && x >= 30 && x <= 289)) rgb = 6'b01_01_01;
             if (in_field) begin
-                if (brick || (y >= 32 && y < 64 && bricks[brick_index] && brick_mortar)) begin
+                if (brick) begin
                     case (y[4:3])
-                        0: rgb = brick_mortar ? 6'b01_00_00 :
-                                (brick_highlight ? 6'b11_01_01 :
-                                                     (brick_fractal ? 6'b10_00_01 : 6'b11_00_01));
-                        1: rgb = brick_mortar ? 6'b01_01_00 :
-                                (brick_highlight ? 6'b11_11_00 :
-                                                     (brick_fractal ? 6'b10_01_00 : 6'b11_10_00));
-                        2: rgb = brick_mortar ? 6'b00_01_00 :
-                                (brick_highlight ? 6'b10_11_00 :
-                                                     (brick_fractal ? 6'b00_10_00 : 6'b01_11_00));
-                        3: rgb = brick_mortar ? 6'b00_01_01 :
-                                (brick_highlight ? 6'b00_11_11 :
-                                                     (brick_fractal ? 6'b00_10_10 : 6'b00_10_11));
+                        0: rgb = 6'b11_00_01;
+                        1: rgb = 6'b11_10_00;
+                        2: rgb = 6'b01_11_00;
+                        3: rgb = 6'b00_10_11;
                     endcase
                 end
                 if (pong_mode) begin

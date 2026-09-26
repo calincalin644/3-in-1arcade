@@ -48,12 +48,11 @@ async def video_and_controls(dut):
     assert int(dut.uo_out.value) == 0x4f  # Three lives, decimal point off.
 
     # Known initial image: row colors, brick gaps, paddle, ball, life indicators.
-    samples = [(72, 24, {(3, 3, 3)}), (100, 40, {(0, 0, 0)}),
-               (70, 66, {(2, 0, 1), (3, 0, 1), (3, 1, 1)}),
-               (70, 82, {(2, 1, 0), (3, 2, 0), (3, 3, 0)}),
-               (70, 98, {(0, 2, 0), (1, 3, 0), (2, 3, 0)}),
-               (70, 114, {(0, 1, 2), (0, 2, 2), (0, 2, 3), (0, 3, 3)}),
-               (64, 66, {(0, 0, 0), (1, 0, 0)}), (300, 442, {(0, 3, 3)}),
+    samples = [(72, 24, {(3, 3, 3)}), (584, 24, {(0, 0, 0)}),
+               (100, 40, {(0, 0, 0)}),
+               (70, 66, {(3, 0, 1)}), (70, 82, {(3, 2, 0)}),
+               (70, 98, {(1, 3, 0)}), (70, 114, {(0, 2, 3)}),
+               (64, 66, {(0, 0, 0)}), (300, 442, {(0, 3, 3)}),
                (320, 434, {(3, 3, 3)})]
     for h, v, expected in samples:
         assert rgb(await pixel(h, v)) in expected, (h, v, expected)

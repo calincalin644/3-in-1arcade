@@ -5,9 +5,9 @@ also prepared for **SKY130 GitHub Actions hardening with a 1x1 tile target**.
 
 ![Simulation of the VGA output](docs/preview.png)
 
-Classic black background, 32 textured bricks, a cyan paddle, a white ball and
-three lives. Bricks include mortar seams, edge highlights and a deterministic
-rough surface pattern generated from pixel coordinates; there is no texture RAM.
+Classic black background, 32 flat colored bricks, a cyan paddle, a white ball and
+three lives. Black gaps separate the bricks; decorative texture and shading have
+been removed to reduce ASIC area.
 Hold left/right to move at constant speed; opposing directions stop the paddle.
 Press launch to serve. After losing a life, release and press launch again.
 A red bar means game over; a green bar means you cleared all bricks. Press
@@ -15,6 +15,8 @@ launch once to reset an end state and again to launch the new ball.
 Set `ui_in[3]` high while reset is asserted to select Pong. Pong uses the same
 VGA timing, RGB222 output, input decoder and three-button/gamepad controls; the
 lower paddle is the player and the upper paddle is a simple CPU opponent.
+The CPU snaps to the ball's 32-logical-pixel column once per frame; collision
+checks use the same column boundaries.
 Set both `ui_in[3]` and `ui_in[7]` high during reset to select the third game,
 a compact Pacman-style maze with pellets, a moving ghost and a controllable
 yellow character. Both characters obey the maze walls. The maze is a constant
@@ -31,13 +33,16 @@ Inputs are captured at the start of vertical blanking. The longest update comple
 within 32 pixel clocks (1.27 microseconds at 25.2 MHz), well before visible video
 resumes. Each operation has a compute clock and a consume clock. Disabling `ena`
 pauses the sequence; reset aborts it. Switching games still requires reset.
-Textured bricks, ghost chase rules, controller decoding, and VGA timing remain.
+Ghost chase rules, controller decoding, and VGA timing remain. Bricks, maze walls
+and the ghost use flat colors. The decorative pellet-score indicator and its
+counter have been removed; lives indicators and mouth animation remain.
 
-Under the same local SKY130 mapping, this change reduced cell area from 13,439 to
-11,437 square micrometers (14.9%). These figures are only useful for relative
-comparison: the previous revision mapped to 18,012 square micrometers in the actual
-SKY 26d flow and failed placement at 128.827% utilization. This revision needs a new
-GitHub hardening run; the local estimate does not establish 1x1 fit.
+The shared movement engine reduced the local SKY130 estimate from 13,439 to
+11,437 square micrometers. Coarse CPU tracking and simpler rendering reduce it
+further to 11,094 square micrometers (another 3.0%). These estimates are useful
+only for relative comparisons. The last reported SKY 26d placement failed at
+102.147% utilization before these latest changes. A new GitHub hardening run
+must establish whether this revision fits a 1x1 tile.
 
 The onboard 7-segment display shows the selected game's remaining lives,
 from 3 down to 0. VGA uses `uio_out[7:0]` on BIDIR with all eight output
@@ -90,8 +95,8 @@ bitstream to `/bitstreams`, detects the FPGA, selects it, switches to manual
 inputs, starts **25,200,000 Hz**, and resets the game. It leaves the existing
 startup default unchanged. The board needs its Tiny Tapeout MicroPython SDK.
 
-The current connected board was programmed and reported a 25,200,000 Hz project
-clock. Without a VGA monitor attached, only the FPGA load and clock setup could
+An earlier build was programmed on the connected board and reported a
+25,200,000 Hz project clock. The latest area-saving build needs to be uploaded. Without a VGA monitor attached, only the FPGA load and clock setup could
 be checked here; connect a monitor to verify the image and use the DIP switches.
 
 From a standalone copy of this directory, activate OSS CAD Suite, install
@@ -118,8 +123,9 @@ make -C breakout test COMPILE_ARGS="-B $PWD/.tools/local/usr/lib/x86_64-linux-gn
 The RTL unit test covers DIP debounce, serial controller decoding, stale reports,
 movement limits, launch, collision cases, lost lives, win, restart, and
 frame input capture, pausing, reset during an update, and shared-bank mode changes.
-A separate regression compares all three games with the frozen previous engines
-for 10,000 frames each, including disabled frames and restarts. Cocotb tests
+A separate regression compares all three games with behavioral reference engines
+for 10,000 frames each, including disabled frames and restarts. The Pong reference
+includes coarse CPU tracking; directed tests cover all eight CPU columns. Cocotb tests
 inspect the external pins for sync boundaries on every line, blanking, initial
 graphics, opposing directions, movement and launch. They also work on the
 gate-level netlist without accessing internal registers. Simulation uses a
@@ -156,13 +162,13 @@ and placement density have not been changed.
 ## Verification and limits
 
 - RTL unit tests and external video/control simulation have passed locally.
-- FPGA synthesis, placement and routing passed at 25.2 MHz (30.04 MHz reported
-  maximum); the design uses 1,180 of 5,280 FPGA logic cells.
-- An early SKY130 mapping estimates about 11,437 square micrometers of standard
+- FPGA synthesis, placement and routing passed at 25.2 MHz (28.42 MHz reported
+  maximum); the design uses 1,070 of 5,280 FPGA logic cells.
+- An early SKY130 mapping estimates about 11,094 square micrometers of standard
   cells with all three games. This is a rough synthesis estimate using OpenROAD's SKY130 HD typical
   library, not Tiny Tapeout signoff: it excludes clock-tree and physical overhead.
 - **1x1 ASIC fit remains unverified for this revision.** The previous revision
-  failed SKY 26d placement at 128.827%; that failure is not a result for this new RTL. GitHub hardening must establish
+  failed SKY 26d placement at 102.147%; that failure is not a result for this new RTL. GitHub hardening must establish
   routed area, timing, DRC and LVS before this can be called tapeout-ready.
 - Physical VGA display/controller testing is pending; the generated image is
   from simulation. No numeric score, sound, acceleration or framebuffer is included.

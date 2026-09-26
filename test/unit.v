@@ -13,23 +13,32 @@ module unit;
     wire game_lost, game_won, game_done, game_launch;
     wire [7:0] unused_cpu;
     arcade_session game_session(clk,rst_n,ena,game_done,game_launch,game_lost,game_won,lives,state,);
-    arcade_engine game(clk,rst_n,ena,frame,gl,gr,1'b0,1'b0,gf,1'b0,1'b0,state,
-                      bx,by,paddle,unused_cpu,bricks,,, ,game_lost,game_won,game_done,game_launch);
+    arcade_engine game(.clk(clk),.rst_n(rst_n),.ena(ena),.frame(frame),
+        .left(gl),.right(gr),.up(1'b0),.down(1'b0),.launch(gf),
+        .pong_mode(1'b0),.pacman_mode(1'b0),.state(state),
+        .x(bx),.y(by),.a(paddle),.b(unused_cpu),.bricks(bricks),.direction(),.mouth(),
+        .lost(game_lost),.won(game_won),.done(game_done),.launch_saved(game_launch));
     reg pl=0, pr=0, pf=0;
     wire [7:0] pp, cp, pbx, pby;
     wire [1:0] plives, pstate;
     wire pong_lost, pong_won, pong_done, pong_launch;
     arcade_session pong_session(clk,rst_n,ena,pong_done,pong_launch,pong_lost,pong_won,plives,pstate,);
-    arcade_engine pong(clk,rst_n,ena,frame,pl,pr,1'b0,1'b0,pf,1'b1,1'b0,pstate,
-                      pbx,pby,pp,cp,,,, ,pong_lost,pong_won,pong_done,pong_launch);
+    arcade_engine pong(.clk(clk),.rst_n(rst_n),.ena(ena),.frame(frame),
+        .left(pl),.right(pr),.up(1'b0),.down(1'b0),.launch(pf),
+        .pong_mode(1'b1),.pacman_mode(1'b0),.state(pstate),
+        .x(pbx),.y(pby),.a(pp),.b(cp),.bricks(),.direction(),.mouth(),
+        .lost(pong_lost),.won(pong_won),.done(pong_done),.launch_saved(pong_launch));
     reg pal=0, par=0, pau=0, pad=0, paf=0;
-    wire [7:0] pacx, pacy, ghostx, ghosty, pacscore;
+    wire [7:0] pacx, pacy, ghostx, ghosty;
     wire [1:0] paclives, pacstate;
     wire [2:0] pacdir;
     wire pacmouth, pac_lost, pac_won, pac_done, pac_launch;
     arcade_session pac_session(clk,rst_n,ena,pac_done,pac_launch,pac_lost,pac_won,paclives,pacstate,);
-    arcade_engine pac(clk,rst_n,ena,frame,pal,par,pau,pad,paf,1'b0,1'b1,pacstate,
-                      pacx,pacy,ghostx,ghosty,,pacscore,pacdir,pacmouth,pac_lost,pac_won,pac_done,pac_launch);
+    arcade_engine pac(.clk(clk),.rst_n(rst_n),.ena(ena),.frame(frame),
+        .left(pal),.right(par),.up(pau),.down(pad),.launch(paf),
+        .pong_mode(1'b0),.pacman_mode(1'b1),.state(pacstate),
+        .x(pacx),.y(pacy),.a(ghostx),.b(ghosty),.bricks(),.direction(pacdir),.mouth(pacmouth),
+        .lost(pac_lost),.won(pac_won),.done(pac_done),.launch_saved(pac_launch));
     reg [7:0] top_ui=0;
     wire [7:0] top_uo, top_uio, top_oe;
     tt_um_breakout top_dut(
@@ -166,9 +175,26 @@ module unit;
         @(negedge clk); pong.x=120; pong.y=217; pong.a=112;
         pong.direction[1]=1; tick;
         if(pong.direction[1]!==0 || pby!==216) $fatal(1,"Pong player bounce");
-        @(negedge clk); pong.x=128; pong.y=26; pong.b=112;
+        @(negedge clk); pong.x=128; pong.y=26; pong.b=128;
         pong.direction[1]=0; tick;
         if(pong.direction[1]!==1 || pby!==26) $fatal(1,"Pong CPU bounce");
+        // Coarse tracking covers all eight columns and remains aligned at
+        // both edges. Collision uses the paddle visible before the update.
+        for(i=0;i<8;i=i+1) begin
+            @(negedge clk); pong_session.state=0; pong.x=i*32+31;
+            tick;
+            if(cp!==i*32 || cp[4:0]!==0) $fatal(1,"CPU column tracking %0d",i);
+            @(negedge clk); pong_session.state=1;
+            pong.x=i*32; pong.y=26; pong.b=i*32; pong.direction=1;
+            tick;
+            if(pong.direction[1:0]!==2'b10 || pby!==26)
+                $fatal(1,"CPU left edge collision %0d",i);
+        end
+        @(negedge clk); pong_session.state=1;
+        pong.x=63; pong.y=26; pong.b=64; pong.direction=1;
+        tick;
+        if(pong.direction[1]!==0 || pby!==24 || cp!==32)
+            $fatal(1,"CPU adjacent-column miss or tracking");
 
         // The third mode is a frame-based Pacman maze game.
         for(my=0;my<16;my=my+1) begin
@@ -265,7 +291,7 @@ module unit;
             force top_dut.launch=1'b1; top_tick; release top_dut.launch;
             if(top_uo!==8'h4f || top_dut.state!==0)
                 $fatal(1,"Shared session restart");
-            if(mode==3 && (top_dut.pac_score!==0 || top_dut.pac_x!==16))
+            if(mode==3 && (top_dut.pac_x!==16 || top_dut.pac_y!==16))
                 $fatal(1,"Maze restart");
             if(mode!=3 && (top_dut.bricks!==32'hffffffff || top_dut.paddle!==112))
                 $fatal(1,"Paddle engine restart");
