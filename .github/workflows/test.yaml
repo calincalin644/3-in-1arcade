@@ -28,6 +28,8 @@ jobs:
           cd test
           make clean
           make
+          iverilog -g2012 -s unit -o /tmp/breakout-unit unit.v ../src/tt_um_breakout.v
+          vvp /tmp/breakout-unit
           # make will return success even if the test fails, so check for failed tests in results.xml.
           ! grep -E '<(failure|error)' results.xml
 

@@ -1,19 +1,18 @@
 name: fpga
-
-on:
-  push:
-    # Comment out (or remove) the following line to run the FPGA workflow on every push:
-    branches: none
-  workflow_dispatch:
-
+on: [push, workflow_dispatch]
 jobs:
   fpga:
     runs-on: ubuntu-24.04
     steps:
-      - name: checkout repo
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+      - name: Install FPGA tools
+        run: sudo apt-get update && sudo apt-get install -y yosys nextpnr-ice40 fpga-icestorm
+      - name: Build at the actual 25.2 MHz pixel clock
+        run: make
+      - uses: actions/upload-artifact@v7
         with:
-          submodules: recursive
-
-      - name: FPGA bitstream for TT ASIC Sim (ICE40UP5K)
-        uses: TinyTapeout/tt-gds-action/fpga/ice40up5k@ttsky26d
+          name: fabricfox-breakout
+          path: |
+            build/tt_um_breakout.bin
+            build/synthesis.log
+            build/nextpnr.log
