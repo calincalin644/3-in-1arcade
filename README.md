@@ -46,17 +46,20 @@ Run from this repository:
 pip install -r test/requirements.txt
 pip install mpremote
 make                             # FPGA bitstream
-make test                        # RTL, reference and VGA tests
+make test                        # All games, gamepad and VGA tests
 make upload PORT=/dev/ttyACM0      # ETR/FabricFox with Tiny Tapeout SDK
 ```
 
 ## ASIC hardening
 
-Push to GitHub to run the SKY 26d workflows. After a successful run, download
-`tt_submission` from the GDS workflow's artifacts.
+**Successfully hardened in a 1×1 SKY130 tile.** [Run 36261694960](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960)
+completed on 26 September 2026 for commit `299f5d5`: routing, DRC, LVS, antenna,
+setup/hold checks, Tiny Tapeout precheck and the gate-level test passed.
+Nonfatal maximum-slew warnings remain; see the [hardening notes](docs/development.md#verified-hardening-result).
 
-**One-tile fit is still unverified.** The current 16-brick build passes local RTL
-and FPGA checks; its local cell-area estimate is about **9,253 µm²**, excluding
-physical implementation overhead. Final routing, timing, DRC and LVS must pass.
+Download [tt_submission](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960/artifacts/10912098425)
+from that run for the ASIC files. Pushing changes runs the SKY 26d workflows again.
 
-See [design, area experiments and hardening notes](docs/development.md) for details.
+All three games have passed external-pin gate-level tests; see
+[verification coverage](docs/gate-level-verification.md).
+See [design and area experiments](docs/development.md) for implementation details.

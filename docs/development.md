@@ -76,8 +76,8 @@ The combined brick-write/bar variant measured 9,252.6240 using the same recipe.
 
 These estimates are useful only for relative comparisons. The preceding 32-brick
 revision reached global routing with a 0.05 ns hold margin, but failed placement
-during antenna repair. This 16-brick revision needs a new hardening run to
-establish 1x1 fit.
+during antenna repair. The later 16-brick revision with decoded writes and life
+bars completed hardening; see the verified result below.
 
 The onboard 7-segment display shows the selected game's remaining lives as
 horizontal bars: bottom for one, bottom + middle for two, all three for three,
@@ -164,8 +164,10 @@ for 10,000 frames each, including disabled frames and restarts. The independent 
 use rendering-pixel coordinates and model the new movement rates. Directed tests
 cover all 16 brick cells, all eight CPU columns and alternate-frame movement. Cocotb tests
 inspect the external pins for sync boundaries on every line, blanking, initial
-graphics, opposing directions, movement and launch. They also work on the
-gate-level netlist without accessing internal registers. Simulation uses a
+graphics, opposing directions, movement and launch. Additional external-pin
+cases select Pong and Pacman, drive complete two-controller gamepad reports,
+and check movement, controller release, wall blocking and reset-based selection.
+They work on the gate-level netlist without accessing internal registers. Simulation uses a
 40 ns clock for convenience; timing assertions are in pixel clocks, and hardware
 is built and run at 25.2 MHz.
 
@@ -225,10 +227,9 @@ repair and final timing checks remain enabled.
 - An early SKY130 mapping estimates about 9,253 square micrometers of standard
   cells with all three games. This is a rough synthesis estimate using OpenROAD's SKY130 HD typical
   library, not Tiny Tapeout signoff: it excludes clock-tree and physical overhead.
-- **1x1 ASIC fit remains unverified for this revision.** The previous revision
-  passed global placement at 89.898%, hold repair and global routing, but failed
-  detailed placement during antenna repair; that failure is not a result for this new RTL. GitHub hardening must establish
-  routed area, timing, DRC and LVS before this can be called tapeout-ready.
+- **1x1 hardening passed for commit `299f5d5`**, including routing, DRC, LVS,
+  antenna checks, setup/hold checks, Tiny Tapeout precheck and gate-level simulation.
+  Nonfatal maximum-slew warnings remain; details below.
 - Physical VGA display/controller testing is pending; the generated image is
   from simulation. No numeric score, sound, acceleration or framebuffer is included.
 
@@ -239,3 +240,52 @@ Paddle collisions use the current frame's ball center and paddle position.
 References: [Tiny Tapeout pinouts](https://tinytapeout.com/specs/pinouts/),
 [Psychogenic Gamepad PMOD](https://github.com/psychogenic/gamepad-pmod),
 [SKY template](https://github.com/TinyTapeout/ttsky-verilog-template).
+
+## Verified hardening result
+
+[GitHub Actions run 36261694960](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960),
+26 September 2026, built commit `299f5d5fac2e06ec00606644f5cad34ce7e7af3f`.
+Verified against the user-provided `logs_98196576803.zip`, which contains the
+GDS, precheck, gate-level test and viewer job logs. This commit includes all
+three games, 16 bricks, decoded brick writes and bottom-up horizontal life bars.
+
+| Check / measurement | Result |
+| --- | --- |
+| Tile | 1×1, 161 × 111.52 µm die, 16,493.318 µm² core |
+| Actual flow synthesis cell area | 11,494.7744 µm² |
+| Global-placement reported utilization | 82.536% (includes placer area adjustments; not final routed occupancy) |
+| Detailed routing | Completed with zero final routing violations |
+| Antenna | Zero net/pin violations; passed |
+| Magic DRC / Netgen LVS | Passed |
+| Setup / hold checkers | No violations reported |
+| Maximum capacitance checker | No violations reported |
+| Tiny Tapeout precheck | Passed, including its separate layout checks |
+| Gate-level VGA/control test | 1 passed, 0 failed |
+| Viewer and submission artifacts | Generated and uploaded |
+
+The flow's final summary reports nonfatal maximum-slew violations in
+`max_ss_100C_1v60`, `max_tt_025C_1v80`, `min_ss_100C_1v60`,
+`min_tt_025C_1v80`, `nom_ss_100C_1v60` and `nom_tt_025C_1v80`.
+The console does not include enough per-net detail to quantify these warnings;
+inspect the final STA reports in `GDS_logs` for the affected paths and magnitudes.
+The successful workflow is therefore not described as free of all electrical
+warnings. The main flow skips KLayout DRC; the separate Tiny Tapeout precheck
+runs its own layout checks and passed.
+
+The 9,252.6240 µm² figure elsewhere is the earlier local synthesis estimate,
+not the actual flow's synthesis area or routed occupancy. No final cell-area
+percentage is inferred from the global-placement utilization.
+
+The [tt_submission artifact](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960/artifacts/10912098425)
+contains the ASIC deliverables. This result establishes successful hardening
+for the recorded commit; fabrication/submission acceptance and physical display
+validation are separate steps.
+
+
+### Additional gate-level coverage
+
+After the successful CI run, the exact routed netlist from `tt_submission.zip`
+also passed the new Pong and Pacman/gamepad cases locally. Both cases passed
+against RTL as well. See [coverage and reproducibility](gate-level-verification.md).
+The recorded CI result above remains the original one-test result; these are
+additional local results, and subsequent CI runs will execute all three cases.

@@ -110,7 +110,12 @@ includes coarse CPU tracking. References use rendering-pixel coordinates with
 the new movement rates; directed tests cover all 16 brick cells, all eight CPU
 columns, and the alternate-frame movement cadence. The external
 pin tests cover sync boundaries, blanking, initial colors, paddle movement and
-launch, and can also run on the gate-level netlist.
+launch. Additional cases select Pong and Pacman through reset pins, send serial
+gamepad reports, check player/CPU paddles and ball motion, identify both maze
+characters, exercise Up/Down and a blocking wall, and switch games via reset.
+They verify that controller 2 is ignored, opposing directions stop the paddle,
+and the disconnected-controller marker releases buttons. All three cases run
+on RTL or the gate-level netlist using only package pins.
 
 ## External hardware
 
