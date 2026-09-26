@@ -1,6 +1,6 @@
 ## How it works
 
-The default game is Tiny Breakout, a one-player paddle-and-ball game. Destroy the 8 by 4 brick
+The default game is Tiny Breakout, a one-player paddle-and-ball game. Destroy the 8 by 2 brick
 field without losing all three lives. The ball bounces off the walls, bricks,
 and paddle. Hitting the left or right half of the paddle changes the ball's
 horizontal direction. The paddle moves at a constant speed while a direction
@@ -19,7 +19,8 @@ Four 6-bit position registers serve ball X/Y and paddle X positions in Breakout/
 or player X/Y and ghost X/Y in Pacman. Movement and offset calculations use a shared
 6-bit add/subtract datapath. A single gameplay wall decoder checks the eight maze
 neighbors in successive operations; the renderer has its own wall lookup.
-The six-bit brick collision probe doubles as Pacman direction storage: bits
+The six-bit brick collision probe holds `{hit, unused, row, column}` in Breakout
+and doubles as Pacman direction storage: bits
 [2:0] hold the requested player direction and [5:3] hold the ghost direction.
 Reset and respawn initialize the directions; Breakout overwrites the probe
 before using it. This removes separate direction registers without changing
@@ -31,7 +32,8 @@ two zero bits. Paddles update every frame by one grid unit; ball and maze
 movement update every second PLAY frame by one grid unit. Controls and loss/win
 checks still run every frame. Pacman and ghost average speed and ball vertical
 speed are preserved, ball horizontal speed doubles, and paddles move one-third
-faster. All 32 bricks, object sizes and the maze layout remain unchanged.
+faster. The 16 bricks form two taller rows in the same field area; paddle/ball sizes
+and the maze layout remain unchanged.
 
 Controls are captured at vertical blanking. Updates complete within 32 pixel clocks;
 the renderer sees the completed positions before the next active frame. Each
@@ -102,7 +104,7 @@ RTL unit tests cover input conditioning, directed game states, frame input captu
 pausing and reset during an update. Reference simulations compare all three games
 with behavioral reference engines over 10,000 frames each; the Pong reference
 includes coarse CPU tracking. References use rendering-pixel coordinates with
-the new movement rates; directed tests cover all 32 brick cells, all eight CPU
+the new movement rates; directed tests cover all 16 brick cells, all eight CPU
 columns, and the alternate-frame movement cadence. The external
 pin tests cover sync boundaries, blanking, initial colors, paddle movement and
 launch, and can also run on the gate-level netlist.

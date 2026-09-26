@@ -5,7 +5,7 @@ also prepared for **SKY130 GitHub Actions hardening with a 1x1 tile target**.
 
 ![Simulation of the VGA output](docs/preview.png)
 
-Classic black background, 32 flat colored bricks, a cyan paddle, a white ball and
+Classic black background, 16 flat colored bricks, a cyan paddle, a white ball and
 three lives. Black gaps separate the bricks; decorative texture and shading have
 been removed to reduce ASIC area.
 Hold left/right to move at constant speed; opposing directions stop the paddle.
@@ -30,8 +30,8 @@ successive clocks. Pacman's eight neighbor checks use one gameplay wall decoder.
 The VGA renderer keeps its own maze lookup for continuous pixel generation.
 Positions use a 64x60 movement grid across the existing 256x240 logical-pixel
 playfield. Each grid unit is four rendering pixels (eight VGA pixels); appending
-two zero bits converts positions for rendering. VGA timing, object sizes, all
-32 bricks and the maze layout remain unchanged.
+two zero bits converts positions for rendering. VGA timing, paddle/ball sizes and the maze layout remain unchanged. Breakout
+now has eight columns and two taller rows: 16 bricks occupy the same field area.
 
 Inputs and paddles update at 60 Hz. Ball and maze movement update at 30 Hz.
 Paddles move four logical pixels per frame instead of three. Ball X/Y each
@@ -51,13 +51,17 @@ Ghost chase rules, controller decoding, and VGA timing remain. Bricks, maze wall
 and the ghost use flat colors. The decorative pellet-score indicator and its
 counter have been removed; lives indicators and mouth animation remain.
 
-Coarser coordinates reduce the local SKY130 area estimate from 10,814 to
-10,396 square micrometers (3.9%), with mapped flip-flops decreasing from 178
-to 169. The registered win flag and shared brick-probe/direction storage remain.
-These estimates are useful only for relative comparisons. The preceding revision
-passed global placement at 95.765% utilization, but failed detailed placement
-after clock-tree synthesis. This change is smaller than the estimated reduction
-needed for comfortable placement; a new hardening run must establish 1x1 fit.
+Reducing Breakout from 32 bricks to 16 lowers the local SKY130 estimate from
+10,396 to 9,445 square micrometers (9.1%), with mapped flip-flops decreasing from
+169 to 153. Each brick is 32x16 rendering pixels; the field is still 256x32 pixels.
+The registered win flag and shared brick-probe/direction storage remain. The
+shared six-bit probe now holds `{hit, unused, row, column}` in Breakout and the
+same two three-bit directions in Pacman.
+
+These estimates are useful only for relative comparisons. The preceding 32-brick
+revision reached global routing with a 0.05 ns hold margin, but failed placement
+during antenna repair. This 16-brick revision needs a new hardening run to
+establish 1x1 fit.
 
 The onboard 7-segment display shows the selected game's remaining lives,
 from 3 down to 0. VGA uses `uio_out[7:0]` on BIDIR with all eight output
@@ -141,7 +145,7 @@ frame input capture, pausing, reset during an update, and shared-bank mode chang
 A separate regression compares all three games with behavioral reference engines
 for 10,000 frames each, including disabled frames and restarts. The independent references
 use rendering-pixel coordinates and model the new movement rates. Directed tests
-cover all 32 brick cells, all eight CPU columns and alternate-frame movement. Cocotb tests
+cover all 16 brick cells, all eight CPU columns and alternate-frame movement. Cocotb tests
 inspect the external pins for sync boundaries on every line, blanking, initial
 graphics, opposing directions, movement and launch. They also work on the
 gate-level netlist without accessing internal registers. Simulation uses a
@@ -175,17 +179,23 @@ The FPGA workflow builds this project's wrapper at the actual pixel-clock rate.
 replacing the template's unnecessary 20 ns / 50 MHz constraint. Tile dimensions
 and placement density have not been changed.
 
+`PL_RESIZER_HOLD_SLACK_MARGIN` and `GRT_RESIZER_HOLD_SLACK_MARGIN` are both
+0.05 ns. Lowering the post-CTS margin from 0.1 ns reduced hold-repair buffering
+from 85 to 23 cells in the preceding run, allowing it to reach global routing.
+It then failed detailed placement during antenna repair. Hold repair, antenna
+repair and final timing checks remain enabled.
+
 ## Verification and limits
 
 - RTL unit tests and external video/control simulation have passed locally.
-- FPGA synthesis, placement and routing passed at 25.2 MHz (29.43 MHz reported
-  maximum); the design uses 958 of 5,280 FPGA logic cells.
-- An early SKY130 mapping estimates about 10,396 square micrometers of standard
+- FPGA synthesis, placement and routing passed at 25.2 MHz (28.88 MHz reported
+  maximum); the design uses 885 of 5,280 FPGA logic cells.
+- An early SKY130 mapping estimates about 9,445 square micrometers of standard
   cells with all three games. This is a rough synthesis estimate using OpenROAD's SKY130 HD typical
   library, not Tiny Tapeout signoff: it excludes clock-tree and physical overhead.
 - **1x1 ASIC fit remains unverified for this revision.** The previous revision
-  passed global placement at 95.765% but failed detailed placement after clock-tree
-  synthesis; that failure is not a result for this new RTL. GitHub hardening must establish
+  passed global placement at 89.898%, hold repair and global routing, but failed
+  detailed placement during antenna repair; that failure is not a result for this new RTL. GitHub hardening must establish
   routed area, timing, DRC and LVS before this can be called tapeout-ready.
 - Physical VGA display/controller testing is pending; the generated image is
   from simulation. No numeric score, sound, acceleration or framebuffer is included.

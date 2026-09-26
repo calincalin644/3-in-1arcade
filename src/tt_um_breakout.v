@@ -33,7 +33,7 @@ module tt_um_breakout (
     wire [5:0] grid_x, grid_y, grid_a, grid_b;
     wire [7:0] pos_x={grid_x,2'b0}, pos_y={grid_y,2'b0};
     wire [7:0] aux_x={grid_a,2'b0}, aux_y={grid_b,2'b0};
-    wire [31:0] bricks;
+    wire [15:0] bricks;
     wire [1:0] lives, state;
     wire lost, won, done, launch_saved;
     wire [2:0] pac_dir;
@@ -48,7 +48,7 @@ module tt_um_breakout (
     wire [7:0] paddle=aux_x, cpu_paddle=aux_y, ball_x=pos_x, ball_y=pos_y;
     wire [7:0] pac_x=pos_x, pac_y=pos_y, ghost_x=aux_x, ghost_y=aux_y;
 
-    wire [31:0] selected_bricks = pong_mode ? 32'b0 : bricks;
+    wire [15:0] selected_bricks = pong_mode ? 16'b0 : bricks;
 
     wire [5:0] rgb_game, rgb_pacman;
     breakout_renderer renderer(h[9:1], v[8:1], active, pong_mode,
@@ -192,7 +192,7 @@ module arcade_engine (
     input wire left, right, up, down, launch, pong_mode, pacman_mode,
     input wire [1:0] state,
     output reg [5:0] x, y, a, b,
-    output reg [31:0] bricks,
+    output reg [15:0] bricks,
     output reg [2:0] direction,
     output reg mouth,
     output reg lost, won,
@@ -216,7 +216,7 @@ module arcade_engine (
     // player direction,player hit}. These uses never overlap.
     reg [3:0] flags;
     reg [5:0] brick_probe;
-    // Same physical bits: brick collision probe or Pacman directions.
+    // Same physical bits: {hit, unused, row, column} or Pacman directions.
     wire [2:0] wanted = brick_probe[2:0];
     wire [2:0] ghost_dir = brick_probe[5:3];
     assign done = phase == FINISH && alu_ready;
@@ -278,7 +278,7 @@ module arcade_engine (
     wire [3:0] query_x = phase[1] ? probe_x[5:2] : alu_result[5:2];
     wire [3:0] query_y = phase[1] ? alu_result[5:2] : probe_y[5:2];
     wire query_open = !maze_wall(query_x, query_y);
-    wire [4:0] brick_index = {alu_result[2:1], x[5:3]};
+    wire [3:0] brick_index = {alu_result[2], x[5:3]};
     wire wanted_open = wanted == LEFT ? flags[0] : wanted == RIGHT ? flags[1] :
                        wanted == UP ? flags[2] : wanted == DOWN ? flags[3] : 1'b0;
     wire current_open = direction == LEFT ? flags[0] : direction == RIGHT ? flags[1] :
@@ -298,7 +298,7 @@ module arcade_engine (
             a <= pacman_mode ? 6'd56 : 6'd28;
             b <= pacman_mode ? 6'd40 : (pong_mode ? 6'd24 : 6'd28);
             direction <= pacman_mode ? RIGHT : {1'b0, pong_mode, 1'b1};
-            bricks <= 32'hffffffff; mouth <= 0;
+            bricks <= 16'hffff; mouth <= 0;
             lost <= 0; won <= 0;
         end else if (ena) begin
             alu_result <= alu_value;
@@ -322,7 +322,7 @@ module arcade_engine (
                         end else phase <= P_INPUT;
                     end else if (state[1] && launch) begin
                         x<=32; y<=serve_y; a<=28; b<=pong_mode ? 6'd24 : 6'd28;
-                        bricks<=32'hffffffff; phase<=FINISH;
+                        bricks<=16'hffff; phase<=FINISH;
                     end else phase<=PLAYER_CHECK;
                 end
                 PLAYER_CHECK: begin
@@ -357,7 +357,7 @@ module arcade_engine (
                     phase<=BRICK_CHECK;
                 end
                 BRICK_CHECK: begin
-                    brick_probe <= {alu_result >= 8 && alu_result < 16 && bricks[brick_index], brick_index};
+                    brick_probe <= {alu_result >= 8 && alu_result < 16 && bricks[brick_index], 1'b0, brick_index};
                     phase<=BALL_Y;
                 end
                 BALL_Y: begin
@@ -367,7 +367,7 @@ module arcade_engine (
                     end else if (pong_mode && flags[2]) begin
                         y<=6; direction[1:0]<={1'b1,flags[3]};
                     end else if (!pong_mode && brick_probe[5]) begin
-                        bricks[brick_probe[4:0]]<=0; direction[1]<=!direction[1];
+                        bricks[brick_probe[3:0]]<=0; direction[1]<=!direction[1];
                     end else y<=alu_result;
                     phase<=FINISH;
                 end
@@ -476,11 +476,11 @@ module breakout_renderer (
     input wire active,
     input wire pong_mode,
     input wire [7:0] paddle, cpu_paddle, ball_x, ball_y,
-    input wire [31:0] bricks,
+    input wire [15:0] bricks,
     input wire [1:0] lives, state,
     output reg [5:0] rgb
 );
-    // Playfield: x=32..287, with power-of-two brick indexing (32x8 cells).
+    // Playfield: x=32..287, with power-of-two brick indexing (32x16 cells).
     wire in_field = x >= 32 && x < 288;
     wire [7:0] px = x[7:0] - 8'd32;
     // Ball matching uses aligned cell/local bits instead of two full-width
@@ -489,9 +489,9 @@ module breakout_renderer (
     wire [3:0] ball_cell_y = ball_y[7:4];
     wire ball = x[8:4] == ball_cell_x && y[7:4] == ball_cell_y &&
                 x[3:2] == ball_x[3:2] && y[3:2] == ball_y[3:2];
-    wire [4:0] brick_index = {y[4:3], px[7:5]};
+    wire [3:0] brick_index = {y[4], px[7:5]};
     wire brick = y >= 32 && y < 64 && bricks[brick_index] &&
-                 px[4:0] >= 1 && px[4:0] < 31 && y[2:0] >= 1 && y[2:0] < 7;
+                 px[4:0] >= 1 && px[4:0] < 31 && y[3:0] >= 1 && y[3:0] < 15;
     wire [7:0] paddle_delta = px - paddle;
     wire life_icon = y[7:2] == 3 &&
         ((x[8:2] == 9 && lives >= 1) ||
@@ -504,12 +504,7 @@ module breakout_renderer (
                 (y == 24 && x >= 30 && x <= 289)) rgb = 6'b01_01_01;
             if (in_field) begin
                 if (brick) begin
-                    case (y[4:3])
-                        0: rgb = 6'b11_00_01;
-                        1: rgb = 6'b11_10_00;
-                        2: rgb = 6'b01_11_00;
-                        3: rgb = 6'b00_10_11;
-                    endcase
+                    rgb = y[4] ? 6'b00_10_11 : 6'b11_00_01;
                 end
                 if (pong_mode) begin
                     if (px[7:5] == cpu_paddle[7:5] && y[7:2] == 5)

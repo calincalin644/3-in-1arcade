@@ -37,7 +37,7 @@ module reference_paddle_game #(parameter COARSE_CPU=0) (
     input wire [1:0] state,
     input wire restart,
     output reg [7:0] paddle, cpu_paddle, ball_x, ball_y,
-    output reg [31:0] bricks,
+    output reg [15:0] bricks,
     output wire lost, won
 );
     localparam SERVE=2'd0, PLAY=2'd1;
@@ -58,8 +58,8 @@ module reference_paddle_game #(parameter COARSE_CPU=0) (
         (dx_right ? ball_x + 8'd4 : ball_x - 8'd4);
     wire [7:0] next_y = dy_down ? ball_y + 8'd4 : ball_y - 8'd4;
     wire [7:0] leading_y = dy_down ? ball_y + 8'd4 : ball_y - 8'd4;
-    wire [4:0] lookahead_index = {leading_y[4:3], next_x[7:5]};
-    reg [4:0] brick_index;
+    wire [3:0] lookahead_index = {leading_y[4], next_x[7:5]};
+    reg [3:0] brick_index;
     reg brick_hit;
     // Positions are stable between frames. Precompute the brick lookup so
     // the 32:1 read does not extend the frame-update critical path.
@@ -81,14 +81,14 @@ module reference_paddle_game #(parameter COARSE_CPU=0) (
     always @(posedge clk) begin
         if (!rst_n) begin
             paddle <= 112; cpu_paddle <= COARSE_CPU ? 8'd96 : 8'd112; ball_x <= 128; ball_y <= serve_y;
-            bricks <= 32'hffffffff;
+            bricks <= 16'hffff;
             dx_right <= 1; dy_down <= pong_mode;
         end else if (ena && frame) begin
             paddle <= paddle_next;
             if (pong_mode) cpu_paddle <= cpu_next;
             if (restart) begin
                 paddle <= 112; cpu_paddle <= COARSE_CPU ? 8'd96 : 8'd112; ball_x <= 128; ball_y <= serve_y;
-                bricks <= 32'hffffffff;
+                bricks <= 16'hffff;
             end else if (state == SERVE) begin
                 ball_x <= paddle_next + 8'd16; ball_y <= serve_y;
                 dx_right <= 1; dy_down <= pong_mode;

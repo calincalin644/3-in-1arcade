@@ -6,7 +6,7 @@ module equivalence_case #(parameter MODE=0)(
 );
     wire [5:0] x,y,a,b;
     wire [7:0] rx,ry,ra,rb,rscore;
-    wire [31:0] bricks,rbricks;
+    wire [15:0] bricks,rbricks;
     wire [1:0] lives,state,rlives,rstate;
     wire [2:0] direction,rdirection;
     wire mouth,rmouth,lost,won,done,launch_saved,rlost,rwon,restart;

@@ -8,7 +8,7 @@ module unit;
     breakout_controls controls(clk,rst_n,frame,ui,left,right,launch,up,down);
     reg gl=0, gr=0, gf=0;
     wire [5:0] paddle,bx,by;
-    wire [31:0] bricks;
+    wire [15:0] bricks;
     wire [1:0] lives,state;
     wire game_lost, game_won, game_done, game_launch;
     wire [5:0] unused_cpu;
@@ -78,7 +78,7 @@ module unit;
     reg [4:0] saved_phase;
     initial begin
         reset;
-        if(paddle!==28 || bx!==32 || state!==0 || lives!==3 || bricks!==32'hffffffff)
+        if(paddle!==28 || bx!==32 || state!==0 || lives!==3 || bricks!==16'hffff)
             $fatal(1,"Reset state");
         // Bounce rejection and per-button qualification at two frame samples.
         ui[0]=1; clocks(4); tick;
@@ -142,12 +142,12 @@ module unit;
         @(negedge clk); game.y=6; game.direction=1; game.motion_phase=0;
         tick; if(game.direction[1]!==1) $fatal(1,"Ceiling");
         // Every brick cell must be reachable, including all row boundaries.
-        for(i=0;i<32;i=i+1) begin
-            @(negedge clk); game.bricks=32'hffffffff;
-            game.x=(i%8)*8+2; game.y=9+(i/8)*2;
+        for(i=0;i<16;i=i+1) begin
+            @(negedge clk); game.bricks=16'hffff;
+            game.x=(i%8)*8+2; game.y=9+(i/8)*4;
             game.direction=1; game.motion_phase=0;
             tick;
-            if(bricks!==(32'hffffffff ^ (32'b1<<i)) || game.direction[1]!==1)
+            if(bricks!==(16'hffff ^ (16'b1<<i)) || game.direction[1]!==1)
                 $fatal(1,"Coarse brick collision index %0d",i);
         end
         @(negedge clk); game.a=28; game.x=30; game.y=54; game.direction=3; game.motion_phase=0;
@@ -160,14 +160,14 @@ module unit;
             if(lives!==i || state!==((i==0)?2:0)) $fatal(1,"Life transition");
         end
         gf=1; tick; gf=0;
-        if(state!==0 || lives!==3 || bricks!==32'hffffffff) $fatal(1,"Restart");
+        if(state!==0 || lives!==3 || bricks!==16'hffff) $fatal(1,"Restart");
         // Keep the registered win behavior: final hit then win on next frame.
-        @(negedge clk); game_session.state=1; game.bricks=32'b1;
+        @(negedge clk); game_session.state=1; game.bricks=16'b1;
         game.x=2; game.y=9; game.direction=1; game.motion_phase=0;
         tick; if(bricks!==0 || state!==1) $fatal(1,"Final brick");
         tick; if(state!==3) $fatal(1,"Registered win timing");
         gf=1; tick; gf=0;
-        if(state!==0 || lives!==3 || bricks!==32'hffffffff) $fatal(1,"Win restart");
+        if(state!==0 || lives!==3 || bricks!==16'hffff) $fatal(1,"Win restart");
 
         reset; pf=1; tick; pf=0;
         for(i=0;i<8;i=i+1) begin
@@ -279,7 +279,7 @@ module unit;
                 $fatal(1,"Shared session restart");
             if(mode==3 && (top_dut.pac_x!==16 || top_dut.pac_y!==16))
                 $fatal(1,"Maze restart");
-            if(mode!=3 && (top_dut.bricks!==32'hffffffff || top_dut.paddle!==112))
+            if(mode!=3 && (top_dut.bricks!==16'hffff || top_dut.paddle!==112))
                 $fatal(1,"Paddle engine restart");
         end
         top_ui=0;
