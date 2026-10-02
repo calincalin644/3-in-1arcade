@@ -199,8 +199,35 @@ module unit;
         end
         reset; paf=1; tick; paf=0;
         if(pacstate!==1) $fatal(1,"Pacman launch");
+        repeat(8) tick;
+        if(pacx!==4 || pacy!==4 || (ghostx===56 && ghosty===40))
+            $fatal(1,"Released player must stay put while ghost moves");
         par=1; repeat(8) tick; par=0;
         if(pacx!==8 || pacy!==4) $fatal(1,"Pacman one cell per eight frames");
+        // Release between cell boundaries, then resume in each heading.
+        for(i=1;i<=4;i=i+1) begin
+            @(negedge clk); pac.x=(i<=2)?9:4; pac.y=(i<=2)?4:9;
+            pac.direction=i; pac.motion_phase=0;
+            repeat(4) tick;
+            if(pacx!==((i<=2)?9:4) || pacy!==((i<=2)?4:9))
+                $fatal(1,"Release did not stop heading %0d",i);
+            pal=(i==1); par=(i==2); pau=(i==3); pad=(i==4);
+            tick;
+            if(pacx!==((i==1)?8:(i==2)?10:4) || pacy!==((i==3)?8:(i==4)?10:4))
+                $fatal(1,"Held direction did not resume heading %0d",i);
+            pal=0; par=0; pau=0; pad=0;
+        end
+        // A perpendicular request cannot cut through a cell corner.
+        @(negedge clk); pac.x=5; pac.y=4; pac.direction=2; pac.motion_phase=0;
+        pad=1; repeat(6) tick;
+        if(pacx!==8 || pacy!==4) $fatal(1,"Turn before cell boundary");
+        tick;
+        if(pacx!==8 || pacy!==5) $fatal(1,"Held turn not taken at boundary");
+        pad=0;
+        // A blocked request must not fall back to the previous heading.
+        @(negedge clk); pac.x=4; pac.y=4; pac.direction=2; pac.motion_phase=0;
+        pau=1; repeat(4) tick; pau=0;
+        if(pacx!==4 || pacy!==4) $fatal(1,"Blocked request continued previous heading");
         @(negedge clk); pac.a=12*4; pac.b=10*4; pac.x=4; pac.y=4;
         pac.brick_probe[5:3]=1; pac.motion_phase=0;
         tick;
@@ -241,7 +268,7 @@ module unit;
                 $fatal(1,"Display reset or VGA output enables");
             if(top_dut.pos_x!==((mode==3)?16:128) || top_dut.aux_x!==((mode==3)?224:112))
                 $fatal(1,"Shared position bank did not reset for selected game");
-            if(mode==3 && (top_dut.engine.wanted!==3'd2 || top_dut.engine.ghost_dir!==3'd1))
+            if(mode==3 && (top_dut.engine.wanted!==3'd0 || top_dut.engine.ghost_dir!==3'd1))
                 $fatal(1,"Shared probe direction initialization after mode switch");
             for(i=0;i<4;i=i+1) begin
                 @(negedge clk);

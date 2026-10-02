@@ -19,8 +19,8 @@ module equivalence_case #(parameter MODE=0)(
             rx,ry,ra,rb,rdirection,rmouth,rscore,rlost);
         assign rwon=0;
         always @(posedge check) begin
-            if({direction,mouth,dut.wanted,dut.ghost_dir} !==
-               {rdirection,rmouth,reference_game.wanted,reference_game.ghost_dir})
+            if({direction,mouth,dut.ghost_dir} !==
+               {rdirection,rmouth,reference_game.ghost_dir})
                 $fatal(1,"Maze animation/steering differs at frame %0d",frame_number);
         end
     end else begin: paddle

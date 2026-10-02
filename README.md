@@ -49,6 +49,9 @@ are zero-based; this original hardware interface remains unchanged:
 | Launch / restart | 2, OFF → ON | A or Start |
 | Pacman up / down | — | D-pad up / down |
 
+Pacman moves while a direction is held and stops on release; turns occur at
+maze-cell boundaries. The ghost keeps moving when the player stops.
+
 One controller is enough. Release launch before pressing again; after game over,
 press once to restart and again to launch. See [wiring and gameplay](docs/info.md)
 for custom three-button boards and protocol details.
@@ -83,15 +86,18 @@ gameplay consuming a life, and the launcher remaining armed after restart.
 The selector upgrade passed seven host tests; on-board checks confirmed mode
 pin levels, reset/launch and input release. A physical Select+Y press switched
 Pacman to Pong, confirmed both on the monitor and in controller status. The
-arcade RTL hash is unchanged. The loader also accepts an ASIC shuttle index
+selector upgrade did not change the arcade RTL. The loader also accepts an ASIC shuttle index
 containing `tt_um_breakout`; that future-silicon path has not yet been tested.
 
 ## ASIC hardening
 
-**Successfully hardened in a 1×1 SKY130 tile.** [Run 36261694960](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960)
+**The earlier revision successfully hardened in a 1×1 SKY130 tile.** [Run 36261694960](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960)
 completed on 26 September 2026 for commit `299f5d5`: routing, DRC, LVS, antenna,
 setup/hold checks, Tiny Tapeout precheck and the gate-level test passed.
 Nonfatal maximum-slew warnings remain; see the [hardening notes](docs/development.md#verified-hardening-result).
+
+The current held-direction Pacman change needs a new hardening run; the artifact
+and gate-level results below describe the earlier movement behavior.
 
 Download [tt_submission](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960/artifacts/10912098425)
 from that run for the ASIC files. Pushing changes runs the SKY 26d workflows again.

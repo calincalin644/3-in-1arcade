@@ -12,7 +12,12 @@ the top. The CPU snaps to the ball's 32-logical-pixel column each frame,
 with collision checks on those same column boundaries. Launch starts a rally; missing either paddle costs a life. Set both
 `ui_in[3]` and `ui_in[7]` high during reset to select the Pacman-style maze.
 Pacman uses a constant tile map, pellets, a moving ghost and four-direction
-gamepad controls without a framebuffer; launch starts a life.
+gamepad controls without a framebuffer; launch starts a life. The player moves
+only while a direction is held and stops at the next movement update after
+release. Turns remain restricted to maze-cell boundaries: between boundaries,
+a held direction continues the current heading until a turn is safe. At a
+boundary, a blocked requested direction stops the player. Simultaneous directions
+have priority left, right, up, then down; the ghost moves independently.
 
 All three games use one sequential movement engine and one lives/session controller.
 Four 6-bit position registers serve ball X/Y and paddle X positions in Breakout/Pong,
@@ -20,13 +25,14 @@ or player X/Y and ghost X/Y in Pacman. Movement and offset calculations use a sh
 6-bit add/subtract datapath. A single gameplay wall decoder checks the eight maze
 neighbors in successive operations; the renderer has its own wall lookup.
 The six-bit brick collision probe holds `{hit, unused, row, column}` in Breakout
-and doubles as Pacman direction storage: bits
-[2:0] hold the requested player direction and [5:3] hold the ghost direction.
+and doubles as ghost direction storage in bits [5:3] for Pacman. The player
+request is decoded directly from the frame-latched buttons, without a separate
+remembered request.
 The 16-bit brick bitmap uses explicit per-bit next-state logic for clear/reset,
 avoiding a variable-index write mux while retaining the same collision priority.
-Reset and respawn initialize the directions; Breakout overwrites the probe
-before using it. This removes separate direction registers without changing
-movement or victory timing.
+Reset and respawn initialize the ghost direction; Breakout overwrites the probe
+before using it. The current player heading remains stored to allow safe movement
+between maze-cell boundaries.
 
 Each stored position counts four rendering pixels, giving 64 horizontal
 positions across the playfield. The renderer expands coordinates by appending

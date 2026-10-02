@@ -207,8 +207,10 @@ module arcade_engine (
     // player direction,player hit}. These uses never overlap.
     reg [3:0] flags;
     reg [5:0] brick_probe;
-    // Same physical bits: {hit, unused, row, column} or Pacman directions.
-    wire [2:0] wanted = brick_probe[2:0];
+    // Same physical bits: brick collision probe or ghost direction in [5:3].
+    // Requests come only from this frame; released directions are not queued.
+    wire [2:0] wanted = buttons[0] ? LEFT : buttons[1] ? RIGHT :
+                        buttons[2] ? UP : buttons[3] ? DOWN : STOP;
     wire [2:0] ghost_dir = brick_probe[5:3];
     assign done = phase == FINISH && alu_ready;
     assign launch_saved = buttons[4];
@@ -272,8 +274,6 @@ module arcade_engine (
     wire [3:0] brick_index = {alu_result[2], x[5:3]};
     wire wanted_open = wanted == LEFT ? flags[0] : wanted == RIGHT ? flags[1] :
                        wanted == UP ? flags[2] : wanted == DOWN ? flags[3] : 1'b0;
-    wire current_open = direction == LEFT ? flags[0] : direction == RIGHT ? flags[1] :
-                        direction == UP ? flags[2] : direction == DOWN ? flags[3] : 1'b0;
     wire [2:0] ghost_turn = a[5:2] > x[5:2] && flags[0] ? LEFT :
         a[5:2] < x[5:2] && flags[1] ? RIGHT :
         b[5:2] > y[5:2] && flags[2] ? UP :
@@ -320,7 +320,7 @@ module arcade_engine (
                     if (pacman_mode) begin
                         if ((state == SERVE || state[1]) && launch) begin
                             x<=4; y<=4; a<=56; b<=40;
-                            direction<=RIGHT; brick_probe[2:0] <=RIGHT; brick_probe[5:3] <=LEFT; mouth<=0;
+                            direction<=RIGHT; brick_probe[5:3] <=LEFT; mouth<=0;
                             phase<=FINISH;
                         end else if (state == PLAY) begin
                             mouth <= !mouth;
@@ -390,19 +390,19 @@ module arcade_engine (
                     phase<=aligned ? P_SCAN : P_STEP;
                 end
                 P_CHOOSE: begin
-                    direction <= wanted_open ? wanted : current_open ? direction : STOP;
+                    direction <= wanted_open ? wanted : STOP;
                     phase<=P_STEP;
                 end
                 P_STEP: begin
-                    if (direction==LEFT || direction==RIGHT) x<=alu_result;
-                    else if (direction==UP || direction==DOWN) y<=alu_result;
+                    // Stop even between cells, retaining heading so a later
+                    // held request can reach the next safe turning boundary.
+                    if (|buttons[3:0]) begin
+                        if (direction==LEFT || direction==RIGHT) x<=alu_result;
+                        else if (direction==UP || direction==DOWN) y<=alu_result;
+                    end
                     phase<=P_INPUT;
                 end
                 P_INPUT: begin
-                    if (buttons[0]) brick_probe[2:0] <=LEFT;
-                    else if (buttons[1]) brick_probe[2:0] <=RIGHT;
-                    else if (buttons[2]) brick_probe[2:0] <=UP;
-                    else if (buttons[3]) brick_probe[2:0] <=DOWN;
                     phase<=FINISH;
                 end
                 default: phase<=IDLE;

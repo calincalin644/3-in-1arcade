@@ -289,3 +289,28 @@ also passed the new Pong and Pacman/gamepad cases locally. Both cases passed
 against RTL as well. See [coverage and reproducibility](gate-level-verification.md).
 The recorded CI result above remains the original one-test result; these are
 additional local results, and subsequent CI runs will execute all three cases.
+
+### Held-direction Pacman controls (3 October 2026)
+
+The player request now comes from the frame-latched direction buttons rather
+than the lower three bits of `brick_probe`. Releasing all directions inhibits
+player position writes, including between cell boundaries. The current heading
+is retained between boundaries so that resuming with a perpendicular request
+can reach a safe turning point. At a boundary, the held request is selected if
+open; a blocked request stops the player instead of continuing the old heading.
+The ghost still moves independently. Breakout and Pong retain their controls.
+
+An identical local Yosys/SKY130 HD synthesis recipe measured 9,252.6240 µm²
+before and 9,235.1072 µm² after the change: 17.5168 µm² (0.19%) smaller, with
+153 flip-flops in both builds. This is a local synthesis comparison, not a
+prediction of final routed area. The FPGA build uses 862 of 5,280 logic cells
+and meets 25.2 MHz (final nextpnr estimate 29.05 MHz, seed 10).
+
+Focused tests cover stopping and resuming in all four headings, stationary
+players with moving ghosts, safe turns, blocked requests and reset. Each game
+also passed 10,000 frames against the reference model, updated for the new maze
+controls. All three external-pin VGA/gamepad tests passed, including the new
+D-pad release/stop check. The seven board-helper host tests passed. The generated FPGA bitstream
+is `build/tt_um_breakout.bin`; building it does not update the connected board.
+This RTL revision needs fresh hardening and gate-level verification; the earlier
+successful layout and gate-level results retain the previous movement behavior.

@@ -233,6 +233,13 @@ async def pacman_gamepad_and_walls(dut):
     assert ghost_down != ghost0, (ghost0, ghost_down)
     assert int(dut.uo_out.value) == 0x49
 
+    await pins.packet(controller1=0)  # Releasing the D-pad stops the player.
+    await pins.frames(2)
+    player_stopped, _ = await pins.maze_characters()
+    await pins.frames(8)
+    player_released, _ = await pins.maze_characters()
+    assert player_released == player_stopped, (player_stopped, player_released)
+
     await pins.packet(controller1=1 << 7)  # Up reverses at an open junction.
     await pins.frames(20)
     player_up, _ = await pins.maze_characters()

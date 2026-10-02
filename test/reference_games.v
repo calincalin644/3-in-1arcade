@@ -125,7 +125,7 @@ module reference_pacman_game (
 );
     localparam SERVE=2'd0, PLAY=2'd1;
     localparam STOP=3'd0, LEFT=3'd1, RIGHT=3'd2, UP=3'd3, DOWN=3'd4;
-    reg [2:0] wanted;
+    wire [2:0] wanted = left ? LEFT : right ? RIGHT : up ? UP : down ? DOWN : STOP;
     reg motion_phase;
     always @(posedge clk) begin
         if (!rst_n) motion_phase <= 0;
@@ -157,13 +157,7 @@ module reference_pacman_game (
                        wanted == RIGHT ? open_right :
                        wanted == UP ? open_up :
                        wanted == DOWN ? open_down : 1'b0;
-    wire current_open = pac_dir == LEFT ? open_left :
-                        pac_dir == RIGHT ? open_right :
-                        pac_dir == UP ? open_up :
-                        pac_dir == DOWN ? open_down : 1'b0;
-    wire [2:0] move_dir = aligned ?
-        (wanted != STOP && wanted_open ? wanted :
-         (pac_dir != STOP && current_open ? pac_dir : STOP)) : pac_dir;
+    wire [2:0] move_dir = aligned ? (wanted_open ? wanted : STOP) : pac_dir;
     wire [7:0] next_x = move_dir == LEFT ? pac_x - 4 :
                         move_dir == RIGHT ? pac_x + 4 : pac_x;
     wire [7:0] next_y = move_dir == UP ? pac_y - 4 :
@@ -197,20 +191,16 @@ module reference_pacman_game (
     always @(posedge clk) begin
         if (!rst_n) begin
             pac_x <= 16; pac_y <= 16; ghost_x <= 224; ghost_y <= 160;
-            pac_dir <= RIGHT; wanted <= RIGHT; pac_mouth <= 0;
+            pac_dir <= RIGHT; pac_mouth <= 0;
             ghost_dir <= LEFT;
             score <= 0;
         end else if (ena && frame) begin
-            if (left) wanted <= LEFT;
-            else if (right) wanted <= RIGHT;
-            else if (up) wanted <= UP;
-            else if (down) wanted <= DOWN;
             case (state)
                 SERVE: begin
                     // Respawn on the launch edge, outside the collision path.
                     if (launch) begin
                         pac_x <= 16; pac_y <= 16; ghost_x <= 224; ghost_y <= 160;
-                        pac_dir <= RIGHT; wanted <= RIGHT; pac_mouth <= 0;
+                        pac_dir <= RIGHT; pac_mouth <= 0;
                         ghost_dir <= LEFT;
                     end
                 end
@@ -218,7 +208,9 @@ module reference_pacman_game (
                     pac_mouth <= !pac_mouth;
                     if (!motion_phase) begin
                     pac_dir <= move_dir;
-                    pac_x <= next_x; pac_y <= next_y;
+                    if (left || right || up || down) begin
+                        pac_x <= next_x; pac_y <= next_y;
+                    end
                     ghost_x <= ghost_next_x; ghost_y <= ghost_next_y;
                     if (ghost_aligned) ghost_dir <= ghost_turn;
                     if (aligned) score <= score + 1'b1;
@@ -227,7 +219,7 @@ module reference_pacman_game (
                 default: begin
                     if (restart) begin
                         pac_x <= 16; pac_y <= 16; ghost_x <= 224; ghost_y <= 160;
-                        pac_dir <= RIGHT; wanted <= RIGHT; pac_mouth <= 0;
+                        pac_dir <= RIGHT; pac_mouth <= 0;
                         ghost_dir <= LEFT;
                         score <= 0;
                     end
