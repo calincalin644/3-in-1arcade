@@ -10,7 +10,7 @@ and all three for three; zero is blank.
 | :---: | :---: | :---: |
 | ![Breakout with 16 bricks](docs/preview.png) | ![Pong with player and CPU paddles](docs/pong.png) | ![Pacman maze with player and ghost](docs/pacman.png) |
 
-*Screenshots captured from the current RTL's simulated VGA output.*
+*Simulated VGA screenshots; the maze image predates the collectible-pellet updates.*
 
 ## Connect and play
 
@@ -50,7 +50,11 @@ are zero-based; this original hardware interface remains unchanged:
 | Pacman up / down | — | D-pad up / down |
 
 Pacman moves while a direction is held and stops on release; turns occur at
-maze-cell boundaries. The ghost keeps moving when the player stops.
+maze-cell boundaries. Pacman moves twice as fast as the ghost. The ghost keeps moving when the player stops. Eat all **16 yellow pellets** to
+win; losing a life preserves collected pellets. Pacman is a solid yellow square.
+One larger yellow pellet at column 1, row 7 makes the ghost cyan and vulnerable
+for four seconds;
+touching it sends it back to its starting position. The ghost chases normally and tries to flee while vulnerable. Restarting refills them.
 
 One controller is enough. Release launch before pressing again; after game over,
 press once to restart and again to launch. See [wiring and gameplay](docs/info.md)
@@ -96,7 +100,7 @@ completed on 26 September 2026 for commit `299f5d5`: routing, DRC, LVS, antenna,
 setup/hold checks, Tiny Tapeout precheck and the gate-level test passed.
 Nonfatal maximum-slew warnings remain; see the [hardening notes](docs/development.md#verified-hardening-result).
 
-The current held-direction Pacman change needs a new hardening run; the artifact
+The current held-direction and collectible-pellet Pacman changes need a new hardening run; the artifact
 and gate-level results below describe the earlier movement behavior.
 
 Download [tt_submission](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960/artifacts/10912098425)

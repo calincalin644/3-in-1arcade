@@ -8,7 +8,8 @@ module unit;
     breakout_controls controls(clk,rst_n,frame,ui,left,right,launch,up,down);
     reg gl=0, gr=0, gf=0;
     wire [5:0] paddle,bx,by;
-    wire [15:0] bricks;
+    wire [15:0] bank;
+    wire [15:0] bricks=bank[15:0];
     wire [1:0] lives,state;
     wire game_lost, game_won, game_done, game_launch;
     wire [5:0] unused_cpu;
@@ -16,7 +17,7 @@ module unit;
     arcade_engine game(.clk(clk),.rst_n(rst_n),.ena(ena),.frame(frame),
         .left(gl),.right(gr),.up(1'b0),.down(1'b0),.launch(gf),
         .pong_mode(1'b0),.pacman_mode(1'b0),.state(state),
-        .x(bx),.y(by),.a(paddle),.b(unused_cpu),.bricks(bricks),.direction(),.mouth(),
+        .x(bx),.y(by),.a(paddle),.b(unused_cpu),.bricks(bank),.direction(),
         .lost(game_lost),.won(game_won),.done(game_done),.launch_saved(game_launch));
     reg pl=0, pr=0, pf=0;
     wire [5:0] pp, cp, pbx, pby;
@@ -26,18 +27,18 @@ module unit;
     arcade_engine pong(.clk(clk),.rst_n(rst_n),.ena(ena),.frame(frame),
         .left(pl),.right(pr),.up(1'b0),.down(1'b0),.launch(pf),
         .pong_mode(1'b1),.pacman_mode(1'b0),.state(pstate),
-        .x(pbx),.y(pby),.a(pp),.b(cp),.bricks(),.direction(),.mouth(),
+        .x(pbx),.y(pby),.a(pp),.b(cp),.bricks(),.direction(),
         .lost(pong_lost),.won(pong_won),.done(pong_done),.launch_saved(pong_launch));
     reg pal=0, par=0, pau=0, pad=0, paf=0;
     wire [5:0] pacx, pacy, ghostx, ghosty;
     wire [1:0] paclives, pacstate;
     wire [2:0] pacdir;
-    wire pacmouth, pac_lost, pac_won, pac_done, pac_launch;
+    wire pac_lost, pac_won, pac_done, pac_launch;
     arcade_session pac_session(clk,rst_n,ena,pac_done,pac_launch,pac_lost,pac_won,paclives,pacstate,);
     arcade_engine pac(.clk(clk),.rst_n(rst_n),.ena(ena),.frame(frame),
         .left(pal),.right(par),.up(pau),.down(pad),.launch(paf),
         .pong_mode(1'b0),.pacman_mode(1'b1),.state(pacstate),
-        .x(pacx),.y(pacy),.a(ghostx),.b(ghosty),.bricks(),.direction(pacdir),.mouth(pacmouth),
+        .x(pacx),.y(pacy),.a(ghostx),.b(ghosty),.bricks(),.direction(pacdir),
         .lost(pac_lost),.won(pac_won),.done(pac_done),.launch_saved(pac_launch));
     reg [7:0] top_ui=0;
     wire [7:0] top_uo, top_uio, top_oe;
@@ -162,7 +163,7 @@ module unit;
         gf=1; tick; gf=0;
         if(state!==0 || lives!==3 || bricks!==16'hffff) $fatal(1,"Restart");
         // Keep the registered win behavior: final hit then win on next frame.
-        @(negedge clk); game_session.state=1; game.bricks=16'b1;
+        @(negedge clk); game_session.state=1; game.bricks=16'h0001;
         game.x=2; game.y=9; game.direction=1; game.motion_phase=0;
         tick; if(bricks!==0 || state!==1) $fatal(1,"Final brick");
         tick; if(state!==3) $fatal(1,"Registered win timing");
@@ -202,8 +203,8 @@ module unit;
         repeat(8) tick;
         if(pacx!==4 || pacy!==4 || (ghostx===56 && ghosty===40))
             $fatal(1,"Released player must stay put while ghost moves");
-        par=1; repeat(8) tick; par=0;
-        if(pacx!==8 || pacy!==4) $fatal(1,"Pacman one cell per eight frames");
+        par=1; repeat(4) tick; par=0;
+        if(pacx!==8 || pacy!==4) $fatal(1,"Pacman one cell per four frames");
         // Release between cell boundaries, then resume in each heading.
         for(i=1;i<=4;i=i+1) begin
             @(negedge clk); pac.x=(i<=2)?9:4; pac.y=(i<=2)?4:9;
@@ -219,7 +220,7 @@ module unit;
         end
         // A perpendicular request cannot cut through a cell corner.
         @(negedge clk); pac.x=5; pac.y=4; pac.direction=2; pac.motion_phase=0;
-        pad=1; repeat(6) tick;
+        pad=1; repeat(3) tick;
         if(pacx!==8 || pacy!==4) $fatal(1,"Turn before cell boundary");
         tick;
         if(pacx!==8 || pacy!==5) $fatal(1,"Held turn not taken at boundary");
@@ -232,7 +233,16 @@ module unit;
         pac.brick_probe[5:3]=1; pac.motion_phase=0;
         tick;
         if(pac.a[5:2]!==12 || pac.b[5:2]!==9) $fatal(1,"Ghost wall turn");
-        @(negedge clk); pac.x=4; pac.y=4; pac.a=4; pac.b=4; pac_session.state=1;
+        // Player above row-2 wall: old chase bounced (5,3)<->(4,3).
+        @(negedge clk); pac.x=20; pac.y=4; pac.a=20; pac.b=12;
+        pac.brick_probe[5:3]=1; pac.motion_phase=0; pac_session.state=1;
+        repeat(32) tick;
+        if(ghostx!==12 || ghosty!==4) $fatal(1,"Ghost failed to go around wall");
+        // When the only opening is behind it, the ghost must reverse.
+        force pac.flags=4'b0010; force pac.brick_probe[5:3]=3'd1; #1;
+        if(pac.ghost_turn!==3'd2) $fatal(1,"Ghost refused dead-end reversal");
+        release pac.flags; release pac.brick_probe[5:3];
+        @(negedge clk); pac.x=4; pac.y=4; pac.a=4; pac.b=4; pac.power_ticks=0; pac_session.state=1;
         tick; if(paclives!==2 || pacstate!==0) $fatal(1,"Pacman life");
         // Inputs belong to the frame request, not the later ALU cycles.
         // Pausing in mid-transaction must hold both phase and position.
@@ -306,7 +316,7 @@ module unit;
                 $fatal(1,"Shared session restart");
             if(mode==3 && (top_dut.pac_x!==16 || top_dut.pac_y!==16))
                 $fatal(1,"Maze restart");
-            if(mode!=3 && (top_dut.bricks!==16'hffff || top_dut.paddle!==112))
+            if(mode!=3 && (top_dut.bricks[15:0]!==16'hffff || top_dut.paddle!==112))
                 $fatal(1,"Paddle engine restart");
         end
         top_ui=0;

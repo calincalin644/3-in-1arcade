@@ -35,20 +35,19 @@ module tt_um_breakout (
     wire [7:0] aux_x={grid_a,2'b0}, aux_y={grid_b,2'b0};
     wire [15:0] bricks;
     wire [1:0] lives, state;
-    wire lost, won, done, launch_saved;
+    wire lost, won, done, launch_saved, frightened;
     wire [2:0] pac_dir;
-    wire pac_mouth;
     arcade_session session(clk, rst_n, ena, done, launch_saved,
                             lost, won, lives, state, /* restart unused */);
     arcade_engine engine(clk, rst_n, ena, frame, left, right, up, down,
         launch, pong_mode, pacman_mode, state,
-        grid_x, grid_y, grid_a, grid_b, bricks, pac_dir, pac_mouth,
-        lost, won, done, launch_saved);
+        grid_x, grid_y, grid_a, grid_b, bricks, pac_dir,
+        lost, won, done, launch_saved, frightened);
     // One physical bank: ball/Pacman (x,y), paddle/ghost-x (a), CPU/ghost-y (b).
     wire [7:0] paddle=aux_x, cpu_paddle=aux_y, ball_x=pos_x, ball_y=pos_y;
     wire [7:0] pac_x=pos_x, pac_y=pos_y, ghost_x=aux_x, ghost_y=aux_y;
 
-    wire [15:0] selected_bricks = pong_mode ? 16'b0 : bricks;
+    wire [15:0] selected_bricks = pong_mode ? 16'b0 : bricks[15:0];
 
     wire [5:0] rgb_game, rgb_pacman;
     breakout_renderer renderer(h[9:1], v[8:1], active, pong_mode,
@@ -56,8 +55,8 @@ module tt_um_breakout (
                                selected_bricks, lives, state, rgb_game);
     pacman_renderer pac_renderer(h[9:1], v[8:1], active,
                                   pac_x, pac_y, ghost_x, ghost_y,
-                                  pac_dir, pac_mouth,
-                                  lives, state, rgb_pacman);
+                                  pac_dir,
+                                  bricks, lives, state, frightened, rgb_pacman);
     wire [5:0] rgb = pacman_mode ? rgb_pacman : rgb_game;
     // Tiny VGA PMOD: {HS, B0, G0, R0, VS, B1, G1, R1}.
     // Register RGB and sync together to remove combinational output glitches.
@@ -185,9 +184,8 @@ module arcade_engine (
     output reg [5:0] x, y, a, b,
     output reg [15:0] bricks,
     output reg [2:0] direction,
-    output reg mouth,
     output reg lost, won,
-    output wire done, launch_saved
+    output wire done, launch_saved, frightened
 );
     localparam SERVE=2'd0, PLAY=2'd1;
     localparam STOP=3'd0, LEFT=3'd1, RIGHT=3'd2, UP=3'd3, DOWN=3'd4;
@@ -195,13 +193,15 @@ module arcade_engine (
         PLAYER_STEP=5'd3, CPU_STEP=5'd4, SERVE_BALL=5'd5,
         BALL_X=5'd6, BRICK_CHECK=5'd7, BALL_Y=5'd8,
         G_SCAN=5'd16, P_SCAN=5'd20, G_CHOOSE=5'd24, P_CHOOSE=5'd25,
-        G_STEP=5'd26, P_STEP=5'd27, P_INPUT=5'd28, FINISH=5'd31;
+        G_STEP=5'd26, P_STEP=5'd27, FINISH=5'd31;
     // Binary encoding avoids a flip-flop per microstep.
     (* fsm_encoding = "none" *) reg [4:0] phase;
     reg alu_ready;
     // IDLE toggles this on PLAY frames. Pacman uses the old value there;
     // CPU_STEP uses the new value later in the same update.
     reg motion_phase; // Half-rate ball/maze updates; inputs sampled every frame.
+    reg [7:0] power_ticks; // 240 video frames = four seconds at 60 Hz.
+    assign frightened = |power_ticks;
     reg [4:0] buttons;
     // Maze: {down,up,right,left}; paddles: {CPU direction,CPU hit,
     // player direction,player hit}. These uses never overlap.
@@ -274,16 +274,39 @@ module arcade_engine (
     wire [3:0] brick_index = {alu_result[2], x[5:3]};
     wire wanted_open = wanted == LEFT ? flags[0] : wanted == RIGHT ? flags[1] :
                        wanted == UP ? flags[2] : wanted == DOWN ? flags[3] : 1'b0;
-    wire [2:0] ghost_turn = a[5:2] > x[5:2] && flags[0] ? LEFT :
-        a[5:2] < x[5:2] && flags[1] ? RIGHT :
-        b[5:2] > y[5:2] && flags[2] ? UP :
-        b[5:2] < y[5:2] && flags[3] ? DOWN :
-        flags[0] ? LEFT : flags[1] ? RIGHT : flags[2] ? UP : flags[3] ? DOWN : STOP;
+    // Avoid two-cell oscillation beside walls; reverse only at a dead end.
+    wire [3:0] ghost_forward = flags &
+        {ghost_dir != UP, ghost_dir != DOWN, ghost_dir != LEFT, ghost_dir != RIGHT};
+    wire [3:0] ghost_options = !frightened && (|ghost_forward) ? ghost_forward : flags;
+    wire [2:0] ghost_turn = (frightened ? a[5:2] < x[5:2] : a[5:2] > x[5:2]) && ghost_options[0] ? LEFT :
+        (frightened ? a[5:2] > x[5:2] : a[5:2] < x[5:2]) && ghost_options[1] ? RIGHT :
+        (frightened ? b[5:2] < y[5:2] : b[5:2] > y[5:2]) && ghost_options[2] ? UP :
+        (frightened ? b[5:2] > y[5:2] : b[5:2] < y[5:2]) && ghost_options[3] ? DOWN :
+        ghost_options[0] ? LEFT : ghost_options[1] ? RIGHT : ghost_options[2] ? UP : ghost_options[3] ? DOWN : STOP;
 
     // Explicit per-brick next-state logic avoids a variable-index write mux.
     // Reset/restart restores the bank; only an unmasked brick collision clears
     // its selected bit. Paddle and top-wall collisions retain their priority.
-    wire brick_reset = phase == IDLE && frame && !pacman_mode && state[1] && launch;
+    wire brick_reset = phase == IDLE && frame && state[1] && launch;
+    // Base 16: columns 1,5,9,13 at rows 1,3,5,7.
+    // The same bank stores bricks or pellets, never both simultaneously.
+    wire pellet_cell = !y[5] && y[2] &&
+        x[3:2] == 2'b01;
+    wire [3:0] pellet_index = {y[4:3],x[5:4]};
+    wire pellet_clear = pacman_mode && phase == IDLE && frame && state == PLAY && pellet_cell;
+    // One large pellet: column 1, row 7 (index 12).
+    wire power_eaten = pellet_clear && bricks[12] && pellet_index == 4'd12;
+    wire power_active = power_eaten || power_ticks > 1;
+    wire ghost_contact = x[5:2] == a[5:2] && y[5:2] == b[5:2];
+    always @(posedge clk) begin
+        if (!rst_n) power_ticks <= 0;
+        else if (ena && phase == IDLE && frame) begin
+            if (!pacman_mode || state != PLAY) power_ticks <= 0;
+            else if (power_eaten) power_ticks <= 240;
+            else if (frightened) power_ticks <= power_ticks - 1'b1;
+        end
+    end
+    wire [3:0] clear_index = pacman_mode ? pellet_index : brick_probe[3:0];
     wire brick_clear = phase == BALL_Y && alu_ready && !pong_mode && brick_probe[5] &&
                        !(!direction[1] && y <= 6) && !flags[0];
     genvar bi;
@@ -291,7 +314,7 @@ module arcade_engine (
         always @(posedge clk) begin
             if (!rst_n) bricks[bi] <= 1'b1;
             else bricks[bi] <= (ena && brick_reset) ||
-                (bricks[bi] && !(ena && brick_clear && brick_probe[3:0] == bi));
+                (bricks[bi] && !(ena && (brick_clear || pellet_clear) && clear_index == bi));
         end
     end endgenerate
 
@@ -304,7 +327,6 @@ module arcade_engine (
             a <= pacman_mode ? 6'd56 : 6'd28;
             b <= pacman_mode ? 6'd40 : (pong_mode ? 6'd24 : 6'd28);
             direction <= pacman_mode ? RIGHT : {1'b0, pong_mode, 1'b1};
-            mouth <= 0;
             lost <= 0; won <= 0;
         end else if (ena) begin
             alu_result <= alu_value;
@@ -314,18 +336,25 @@ module arcade_engine (
                     buttons <= {launch, down, up, right, left};
                     if (state == PLAY) motion_phase <= !motion_phase;
                     else motion_phase <= 0;
-                    lost <= pacman_mode ? (x[5:2] == a[5:2] && y[5:2] == b[5:2]) :
+                    lost <= pacman_mode ? (ghost_contact && !power_active) :
                         (pong_mode ? (y >= 59 || y <= 1) : y >= 59);
-                    won <= !pacman_mode && !pong_mode && bricks == 0;
+                    won <= !pong_mode && bricks == 0;
                     if (pacman_mode) begin
                         if ((state == SERVE || state[1]) && launch) begin
                             x<=4; y<=4; a<=56; b<=40;
-                            direction<=RIGHT; brick_probe[5:3] <=LEFT; mouth<=0;
+                            direction<=RIGHT; brick_probe[5:3] <=LEFT;
                             phase<=FINISH;
                         end else if (state == PLAY) begin
-                            mouth <= !mouth;
-                            phase <= motion_phase ? P_INPUT : (ghost_aligned ? G_SCAN : G_STEP);
-                        end else phase <= P_INPUT;
+                            if (ghost_contact && power_active) begin
+                                // Eat the ghost without losing a life or clearing pellets.
+                                a<=56; b<=40; brick_probe[5:3]<=LEFT;
+                                phase<=aligned ? P_SCAN : P_STEP;
+                            end else begin
+                                // Player steps every frame; ghost every other frame.
+                                phase <= motion_phase ? (aligned ? P_SCAN : P_STEP) :
+                                    (ghost_aligned ? G_SCAN : G_STEP);
+                            end
+                        end else phase <= FINISH;
                     end else if (state[1] && launch) begin
                         x<=32; y<=serve_y; a<=28; b<=pong_mode ? 6'd24 : 6'd28;
                         phase<=FINISH;
@@ -400,9 +429,6 @@ module arcade_engine (
                         if (direction==LEFT || direction==RIGHT) x<=alu_result;
                         else if (direction==UP || direction==DOWN) y<=alu_result;
                     end
-                    phase<=P_INPUT;
-                end
-                P_INPUT: begin
                     phase<=FINISH;
                 end
                 default: phase<=IDLE;
@@ -417,8 +443,9 @@ module pacman_renderer (
     input wire active,
     input wire [7:0] pac_x, pac_y, ghost_x, ghost_y,
     input wire [2:0] pac_dir,
-    input wire pac_mouth,
+    input wire [15:0] pellets,
     input wire [1:0] lives, state,
+    input wire frightened,
     output reg [5:0] rgb
 );
     function [15:0] maze_mask;
@@ -440,8 +467,14 @@ module pacman_renderer (
     wire [3:0] row = y[7:4] - 1;
     wire [15:0] map_bits = maze_mask(row);
     wire wall = in_maze && map_bits[col];
-    wire pellet = in_maze && !wall && x[3:0] >= 7 && x[3:0] <= 8 &&
-                  y[3:0] >= 7 && y[3:0] <= 8;
+    wire pellet_cell = !row[3] && row[0] &&
+        col[1:0] == 2'b01;
+    wire [3:0] pellet_index = {row[2:1],col[3:2]};
+    wire power_pellet = pellet_index == 4'd12;
+    wire small_dot = x[3:0] >= 7 && x[3:0] <= 8 && y[3:0] >= 7 && y[3:0] <= 8;
+    wire large_dot = x[3:0] >= 5 && x[3:0] <= 10 && y[3:0] >= 5 && y[3:0] <= 10;
+    wire pellet = in_maze && pellet_cell && pellets[pellet_index] &&
+        (power_pellet ? large_dot : small_dot);
     // Characters use the 16-pixel maze cell plus local bits, avoiding wide
     // coordinate subtraction in the pixel critical path.
     wire [4:0] pac_cell_x = pac_x[7:4] + 2;
@@ -449,7 +482,6 @@ module pacman_renderer (
     wire pac_shape = x[8:4] == pac_cell_x && y[7:4] == pac_cell_y &&
                      x[3:0] >= 4 && x[3:0] <= 11 &&
                      y[3:0] >= 4 && y[3:0] <= 11;
-    wire mouth_cut = pac_mouth && (x[2] ^ y[2]);
     wire [4:0] ghost_cell_x = ghost_x[7:4] + 2;
     wire [3:0] ghost_cell_y = ghost_y[7:4] + 1;
     wire ghost_shape = x[8:4] == ghost_cell_x && y[7:4] == ghost_cell_y &&
@@ -467,11 +499,11 @@ module pacman_renderer (
                     rgb = 6'b00_00_11;
                 else if (pellet) rgb = 6'b11_11_00;
             end
-            if (ghost_shape) rgb = 6'b11_00_00;
-            if (pac_shape && !mouth_cut) rgb = 6'b11_11_00;
+            if (ghost_shape) rgb = frightened ? 6'b00_11_11 : 6'b11_00_00;
+            if (pac_shape) rgb = 6'b11_11_00;
             if (life_icon) rgb = 6'b11_11_11;
             if (state[1] && x >= 120 && x < 200 && y >= 112 && y < 118)
-                rgb = 6'b11_00_00;
+                rgb = state[0] ? 6'b00_11_00 : 6'b11_00_00;
         end
     end
 endmodule

@@ -11,13 +11,29 @@ and controls, with the player paddle at the bottom and a simple CPU paddle at
 the top. The CPU snaps to the ball's 32-logical-pixel column each frame,
 with collision checks on those same column boundaries. Launch starts a rally; missing either paddle costs a life. Set both
 `ui_in[3]` and `ui_in[7]` high during reset to select the Pacman-style maze.
-Pacman uses a constant tile map, pellets, a moving ghost and four-direction
+Pacman uses a constant tile map, 16 collectible pellets, a moving ghost and four-direction
 gamepad controls without a framebuffer; launch starts a life. The player moves
 only while a direction is held and stops at the next movement update after
 release. Turns remain restricted to maze-cell boundaries: between boundaries,
 a held direction continues the current heading until a turn is safe. At a
 boundary, a blocked requested direction stops the player. Simultaneous directions
-have priority left, right, up, then down; the ghost moves independently.
+have priority left, right, up, then down; the ghost moves independently. It avoids immediately reversing when another
+open route exists, allowing it to escape two-cell oscillation beside walls.
+It again compares its position with the player to chase, or to flee while
+vulnerable. This is local steering, not complete maze pathfinding.
+The 16 pellets occupy maze columns 1, 5, 9, 13 and rows 1, 3, 5, 7
+(zero-based).
+Entering a pellet cell during play clears it. Eat all 16 to win (green status
+bar). Losing a life retains collected pellets; restarting after win or game over
+restores all 16. There is no separate score counter. The player is a solid yellow square without
+mouth animation. One of the 16 pellets, at column 1 and row 7,
+is a 6×6 logical-pixel power pellet; the other 15 pellets are 2×2. Eating it
+starts a 240-frame (four-second) timer. The ghost turns cyan,
+prefers open directions away from the player and may reverse to escape. Contact
+while powered respawns the ghost without losing a life. A fresh power pickup
+protects against contact in the same update. At timer expiry the ghost returns
+to red and normal contact costs a life. Reset/restart clears the timer; `ena=0`
+pauses it. The power pellet shares the existing bitmap and counts toward victory.
 
 All three games use one sequential movement engine and one lives/session controller.
 Four 6-bit position registers serve ball X/Y and paddle X positions in Breakout/Pong,
@@ -28,7 +44,8 @@ The six-bit brick collision probe holds `{hit, unused, row, column}` in Breakout
 and doubles as ghost direction storage in bits [5:3] for Pacman. The player
 request is decoded directly from the frame-latched buttons, without a separate
 remembered request.
-The 16-bit brick bitmap uses explicit per-bit next-state logic for clear/reset,
+The 16-bit bitmap stores either Pacman pellets or Breakout bricks. The bitmap uses explicit
+per-bit next-state logic for clear/reset,
 avoiding a variable-index write mux while retaining the same collision priority.
 Reset and respawn initialize the ghost direction; Breakout overwrites the probe
 before using it. The current player heading remains stored to allow safe movement
@@ -36,11 +53,10 @@ between maze-cell boundaries.
 
 Each stored position counts four rendering pixels, giving 64 horizontal
 positions across the playfield. The renderer expands coordinates by appending
-two zero bits. Paddles update every frame by one grid unit; ball and maze
-movement update every second PLAY frame by one grid unit. Controls and loss/win
-checks still run every frame. Pacman and ghost average speed and ball vertical
-speed are preserved, ball horizontal speed doubles, and paddles move one-third
-faster. The 16 bricks form two taller rows in the same field area; paddle/ball sizes
+two zero bits. Paddles and Pacman update every PLAY frame by one grid unit;
+balls and the ghost update every second PLAY frame. At 60 Hz, Pacman therefore
+moves twice as fast as the ghost: one maze cell per four frames versus eight.
+Controls and loss/win checks still run every frame. The 16 bricks form two taller rows in the same field area; paddle/ball sizes
 and the maze layout remain unchanged.
 
 Controls are captured at vertical blanking. Updates complete within 32 pixel clocks;

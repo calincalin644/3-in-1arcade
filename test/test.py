@@ -143,16 +143,16 @@ class ArcadePins:
         return min(matches), max(matches)
 
     async def maze_characters(self):
-        # Sample inside each character, away from pellet pixels. Local (5,5)
-        # remains visible during both mouth-animation phases.
+        # Local pixel (4,4) is inside characters but outside even large pellets.
         player, ghost = [], []
         for row in range(1, 11):
             for col in range(1, 15):
-                color = await self.pixel(64 + col * 32 + 10,
-                                         32 + row * 32 + 10)
+                color = await self.pixel(64 + col * 32 + 8,
+                                         32 + row * 32 + 8)
                 if color == (3, 3, 0):
                     player.append((col, row))
-                elif color == (3, 0, 0):
+                elif color in ((3, 0, 0), (0, 3, 3)):
+                    self.ghost_color = color
                     ghost.append((col, row))
         assert len(player) == 1 and len(ghost) == 1, (player, ghost)
         return player[0], ghost[0]
@@ -257,3 +257,26 @@ async def pacman_gamepad_and_walls(dut):
     assert await pins.pixel(260, 42) == (3, 0, 3)
     assert await pins.pixel(200, 110) == (0, 0, 0)
     dut._log.info("Pacman: maze, player/ghost movement, Start, Up/Down and top wall passed")
+
+
+@cocotb.test()
+async def pacman_collectible_pellets(dut):
+    """Follow collection through package inputs and VGA, without internal forcing."""
+    pins = ArcadePins(dut)
+    await pins.reset(0x88)
+    # Pellet at column 5, row 1; no pellet at column 3, row 1.
+    assert await pins.pixel(238, 78) == (3, 3, 0)
+    assert await pins.pixel(174, 78) == (0, 0, 0)
+    assert await pins.pixel(142, 206) == (0, 0, 0)  # Removed extra bank: column 2, row 5.
+    assert await pins.pixel(106, 266) == (3, 3, 0)  # Large power pellet, local (5,5).
+    assert await pins.pixel(234, 74) == (0, 0, 0)  # Ordinary pellet stays small.
+    await pins.packet(controller1=(1 << 8) | (1 << 6))  # Start + Down.
+    await pins.frames(26)
+    await pins.packet(controller1=0)
+    # Player has left its starting cell: that pellet has disappeared.
+    assert await pins.pixel(110, 78) == (0, 0, 0)
+    assert await pins.pixel(238, 78) == (3, 3, 0)
+    assert int(dut.uo_out.value) == 0x49
+    await pins.maze_characters()
+    assert pins.ghost_color == (0, 3, 3), "Power pellet did not change ghost color"
+    dut._log.info("Pacman: starting pellet eaten, unvisited pellet retained, sparse map rendered")

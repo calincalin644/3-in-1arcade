@@ -22,6 +22,8 @@ test: | build
 	$(VVP) build/unit
 	$(IVERILOG) -g2012 -s compare -o build/compare test/compare.v test/reference_games.v src/$(NAME).v
 	$(VVP) build/compare
+	$(IVERILOG) -g2012 -s pellets -o build/pellets test/pellets.v src/$(NAME).v
+	$(VVP) build/pellets
 	$(MAKE) -C test
 upload: all
 	$(MPREMOTE) connect $(PORT) fs cp build/$(NAME).bin :/bitstreams/$(NAME).bin

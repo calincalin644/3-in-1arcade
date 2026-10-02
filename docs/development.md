@@ -314,3 +314,226 @@ D-pad release/stop check. The seven board-helper host tests passed. The generate
 is `build/tt_um_breakout.bin`; building it does not update the connected board.
 This RTL revision needs fresh hardening and gate-level verification; the earlier
 successful layout and gate-level results retain the previous movement behavior.
+
+### Sixteen collectible pellets experiment (3 October 2026)
+
+Pacman now shares Breakout's 16-bit bitmap. Pellet positions form a regular
+4-by-4 pattern at maze columns 1/5/9/13 and rows 1/3/5/7; all are open and
+reachable from spawn. Indexing these coordinates keeps the decoding small.
+During PLAY, entering a cell clears its pellet. The existing empty-bank check
+and WON session state provide victory without a counter or additional storage.
+The green status bar indicates a win. Life loss preserves the bitmap; reset or
+restart after game over/win refills it. The initial spawn pellet is collected
+once play begins. The renderer shows only remaining pellets.
+
+Compared with held-direction controls alone, the same local SKY130 HD recipe
+increased area from 9,235.1072 to 9,580.4384 µm² (+345.3312 µm², +3.74%).
+The design still has 153 flip-flops: sharing the bitmap avoids more storage,
+but address selection, collection and rendering add combinational logic.
+FPGA occupancy increased from 862 to 900 logic cells; the new build passes the
+25.2 MHz target with a final nextpnr estimate of 30.44 MHz (seed 10).
+These synthesis results do not establish one-tile physical fit; this version
+needs a new hardening run and new gate-level validation.
+
+The engine tests and 10,000-frame reference comparison per game passed.
+`test/pellets.v` checks all 16 locations, sparse rendering, collection and repeat
+visits, non-pellet addresses, enable/pause, victory, life loss, respawn and restart.
+The new external-pin `pacman_collectible_pellets` test also passed: a serial
+Start+Down report moves the player away, the starting dot disappears from VGA,
+an unvisited dot remains and a non-pellet cell stays empty. The earlier full
+three-test VGA suite was run on the preceding held-direction version; this
+experiment adds this focused pin-level test alongside the engine regressions.
+
+### Remove the idle movement step and expand to 24 pellets
+
+The former `P_INPUT` phase no longer did any work after held-direction controls
+removed its direction-memory writes. Its incoming transitions now go directly
+to `FINISH`, saving two clocks per affected update while retaining frame-latched
+inputs and the session commit protocol. No ghost behaviour or input timeout was
+changed. The existing five-bit phase register remains sufficient.
+
+The shared bitmap is now 24 bits. The original 16 pellets retain their locations;
+eight new ones occupy columns 2/6/10/14 at rows 5/7. All 24 are reachable from
+spawn. Breakout uses only the lower 16 bits, including for victory detection.
+Pacman requires all 24 bits to be cleared to win; reset/restart restores them.
+
+| Local SKY130 HD synthesis variant | Cell area (µm²) | Flip-flops |
+| --- | ---: | ---: |
+| Previous 16 pellets | 9,580.4384 | 153 |
+| Remove unused phase, retain 16 pellets | 9,391.5072 | 153 |
+| Remove unused phase, expand to 24 pellets | 9,770.6208 | 161 |
+
+The cleanup saves 188.9312 µm²; the expansion adds 379.1136 µm² relative to
+that cleaned version. Net growth is 190.1824 µm² (1.99%) over the previous
+16-pellet implementation. Physical one-tile fit still requires hardening.
+The FPGA build uses 912 logic cells and meets 25.2 MHz (final nextpnr estimate
+29.17 MHz, seed 10).
+
+The 24-pellet tests pass collection/rendering of every dot, repeated visits,
+non-pellet addresses, pause, no victory after only the first 16 are eaten,
+final victory, life preservation and restart. The engine unit tests and
+10,000-frame reference comparisons for each game also pass. The Breakout final
+brick test explicitly leaves the upper eight bits set to check mode isolation.
+The focused external-pin VGA/gamepad test also passed, including display of a
+pellet in the new upper bank. The 24-pellet bitstream was copied to the demo
+board, its SHA256 verified, and Pacman started with the game-selection helper
+restored. The previous 16-pellet bitstream is backed up locally in
+`build/pacman24/previous.bin`.
+
+
+### Remove mouth animation
+
+Removed the animation flip-flop, its updates and the renderer's mouth cut-out.
+Pacman is now a solid yellow 8-by-8 logical-pixel square. Local SKY130 HD
+synthesis decreases from 9,770.6208 to 9,735.5872 µm² (35.0336 µm² saved),
+with 160 rather than 161 flip-flops. FPGA occupancy is 905 logic cells;
+nextpnr's final timing estimate is 29.69 MHz, passing the 25.2 MHz target.
+Engine/unit tests, all 24 pellet cases, the full solid player shape and
+10,000-frame reference comparisons per game passed. No new hardening or
+full external-pin simulation was run for this small rendering change.
+
+### Thirty-two collectible pellets experiment
+
+Expanded the shared bank to 32 bits, keeping the player solid and the unused
+movement phase removed. Pellets now occupy columns 1/2/5/6/9/10/13/14 at rows
+1/3/5/7. All 32 are open and reachable. The regular pattern simplifies the
+index to coordinate-bit concatenation; each pellet still clears independently.
+Breakout uses only bits 15:0 and ignores the upper sixteen for victory.
+
+The same local SKY130 HD synthesis recipe reports 10,119.7056 µm² and 168 FFs,
+versus 9,735.5872 µm² and 160 FFs for 24 pellets without mouth animation.
+The increase is 384.1184 µm² (3.95%). This estimate does not establish one-tile
+physical fit; the revision needs fresh hardening. The FPGA uses 924 logic cells
+and passes 25.2 MHz (final nextpnr estimate 30.29 MHz, seed 10).
+
+Directed tests cover all 32 dots and their disappearance, no early victory,
+final victory, life preservation, restart, pause and the solid player shape.
+These tests, the engine unit tests, 10,000-frame reference comparisons per game,
+and the focused external-pin VGA/gamepad pellet test passed. The FPGA bitstream
+was uploaded, its SHA256 verified, and Pacman started at 25.2 MHz with the
+selection helper restored. The previous bitstream is backed up locally at
+`build/pacman32/previous.bin`.
+
+### Ghost wall-oscillation correction
+
+With the player at maze cell (5,1), the previous greedy chase alternated between
+(5,3) and (4,3), unable to route around the intervening wall. The ghost now masks
+its reverse direction when any other opening is available, retaining reversal
+at a dead end. It reuses the stored heading; no new state is needed. The example
+now follows (5,3), (4,3), (3,3), (3,2), (3,1), (4,1), (5,1).
+This fixes immediate backtracking, not general pathfinding: larger loops may
+still occur with local chase rules.
+
+The regression checks going around this wall and dead-end reversal. Unit and
+32-pellet tests, plus 10,000-frame reference comparisons per game, pass.
+Local SKY130 synthesis reports 10,089.6768 µm² and 168 FFs, versus 10,119.7056
+µm² before; mapping changes yield a small net reduction of 30.0288 µm².
+FPGA occupancy is 937 logic cells and final timing is 29.51 MHz, passing 25.2 MHz.
+A new hardening run is still needed to determine physical one-tile fit.
+
+
+### Player speed advantage
+
+Pacman now updates every PLAY frame while the ghost retains alternate-frame
+updates. Both use the same one-unit step, so player speed is twice ghost speed
+(15 versus 7.5 maze cells per second at 60 Hz). On ghost-idle frames, the engine
+enters the player's wall-scan/step directly. Held controls, cell-boundary turns,
+32 pellets and the ghost anti-reversal rule remain active.
+
+Local SKY130 synthesis reports 10,262.3424 µm² and 168 FFs: +172.6656 µm²
+(+1.71%) versus equal speed. No flip-flops were added, but changed sequencing
+increases mapped combinational area. FPGA occupancy is 938 logic cells and
+final timing is 29.22 MHz, passing the 25.2 MHz target. Physical fit still needs
+hardening. Unit and pellet tests pass; the reference model uses the new cadence.
+The 10,000-frame reference comparison per game also passed. The new bitstream
+was uploaded and its SHA256 verified; Pacman was started with the selector
+helper restored. The previous equal-speed build is backed up locally at
+`build/pacman-fast/previous.bin`.
+
+
+### Four power pellets and vulnerable ghost
+
+Four existing pellets (indices 4/7/12/15; columns 1/13, rows 3/7) are enlarged
+from 2×2 to 6×6 logical pixels. They retain their individual bitmap bits.
+A fresh pickup loads an eight-bit 240-frame timer; another pickup refreshes it.
+No retrigger occurs on an already eaten pellet. The ghost becomes cyan and its
+local steering prefers increasing distance from the player, permitting reversal
+while vulnerable. Walls remain enforced; this is not a full route planner.
+Powered contact resets ghost position/heading, preserving lives and pellet state.
+Pickup takes priority over contact; expiration restores lethal contact. Reset,
+restart and non-PLAY updates clear the timer; disabled updates pause it.
+
+Local SKY130 HD synthesis reports 10,792.8512 µm² and 176 FFs, versus
+10,262.3424 µm² and 168 FFs before power pellets (+530.5088 µm², +5.17%).
+The eight added flip-flops are the duration timer. FPGA occupancy is 988 logic
+cells; final timing is 30.78 MHz, passing 25.2 MHz. One-tile physical fit is
+unverified until another hardening run.
+
+The unit/pellet suite tests all four enlarged shapes, pickup/contact priority,
+ghost respawn, cyan/red rendering, timer refresh, no repeated pickup, pause,
+flee steering including reversal, exact expiry, normal collision after expiry,
+reset, all 32 food bits and victory. The 10,000-frame-per-game comparison also
+passes against the updated independent model.
+The focused package-pin test passed as well: large versus small pellet pixels,
+collection through a Start+Down gamepad report, and a cyan ghost observed on VGA.
+The bitstream was uploaded and its SHA256 verified; Pacman was started with the
+selection helper restored. The previous build is saved locally under
+`build/pacman-power/previous.bin`.
+
+
+### Keep one power pellet
+
+Only index 12 (column 1, row 7) remains a large power pellet. The former three
+power pellets are now ordinary food; there are still 32 independently collected
+items. The four-second effect, cyan fleeing ghost and ghost capture are unchanged.
+Tests verify exactly one enlarged dot and that the three ordinary replacements
+do not activate or refresh the timer. Unit and pellet tests pass. The pin-level
+test sequence was updated to reach row 7; it was not rerun for this revision.
+Local synthesis is 10,736.5472 µm² (56.3040 µm² less), with 176 FFs unchanged.
+FPGA occupancy is 1,007 logic cells and final timing is 29.69 MHz, passing 25.2 MHz.
+The different FPGA mapping means fewer ASIC cells need not mean fewer FPGA cells.
+One-tile physical fit remains unverified.
+The 10,000-frame reference comparisons per game also passed. The bitstream was
+uploaded, its SHA256 verified, and Pacman started with the helper restored.
+
+
+### Simpler ghost steering experiment
+
+Removed all ghost-versus-player coordinate comparisons from direction selection.
+The ghost chooses left/right/up/down in fixed priority from open non-reversing
+options, reversing only when no other opening exists. This rule is independent
+of player location and vulnerability; it can follow repeating routes. The power
+pellet still makes the ghost cyan and edible for four seconds, but no longer
+makes it flee. All 32 food items and the faster player remain.
+
+The identical local SKY130 synthesis recipe reports 10,695.2576 µm² versus
+10,736.5472 µm² before: only 41.2896 µm² (0.38%) saved. Flip-flops remain 176.
+This small net mapping benefit is insufficient to claim restored one-tile fit.
+FPGA occupancy decreases from 1,007 to 970 logic cells; final timing is 28.74 MHz,
+passing 25.2 MHz. Unit and pellet tests pass, including corridor progression,
+dead-end reversal and unchanged steering while vulnerable.
+The 10,000-frame reference comparison per game passed. The FPGA bitstream was
+uploaded, SHA256 verified and Pacman started with the selector helper restored.
+The previous build is backed up locally in `build/ghost-simple/previous.bin`.
+
+
+### Restore chasing/fleeing and reduce food to sixteen
+
+Restored the coordinate-based chase/flee rule, including normal anti-reversal
+and vulnerable escape reversal. Removed the extra food bank and its columns:
+there are now 15 ordinary pellets and one large power pellet (column 1, row 7).
+The same 16-bit bitmap is again fully shared with Breakout. Faster player
+movement, four-second vulnerability, ghost capture and the solid player remain.
+
+Local SKY130 synthesis is 10,162.2464 µm² and 160 FFs. Compared with the
+32-food simple-ghost experiment (10,695.2576 µm², 176 FFs), this saves
+533.0112 µm² (4.98%) and 16 FFs. Compared with the preceding intelligent ghost
+with 32 food items, it saves 574.3008 µm² (5.35%). The FPGA uses 956 logic cells
+and passes 25.2 MHz (final estimate 31.11 MHz, seed 10). One-tile physical fit
+still needs a new hardening run.
+
+Unit tests, all 16 pellet/renderer/power cases, and 10,000-frame comparisons for
+each game passed. The external-pin test was adjusted for the removed dots but
+was not rerun for this revision. The restored flee and wall-detour cases pass.
+The bitstream was uploaded, its SHA256 verified and Pacman started with the
+selection helper restored.
