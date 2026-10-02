@@ -14,12 +14,28 @@ and all three for three; zero is blank.
 
 ## Connect and play
 
+- The connected ETR board now has a persistent **BOOT-button launcher**: normal
+  power-up still loads the factory test; pressing BOOT loads and starts the
+  selected arcade game. Later presses act as launch/restart. Keep DIP **2 OFF**
+  when using BOOT. After game over, press once to restart and again to launch.
+  Game selection still uses DIP 3/7 as below. This is board firmware support,
+  not a change to the arcade RTL or ASIC.
+- **Gamepad selection on the ETR board:** keep DIP **3 and 7 OFF**, then press
+  **Select+B** for Breakout, **Select+Y** for Pong, or **Select+A** for Pacman.
+  The board resets and launches the chosen game automatically. Release the
+  shortcut before selecting again. A shortcut can also load the arcade directly
+  from the factory test. Use the working gamepad; ordinary A/Start still launches.
+- **Live DIP selection on the ETR board:** once the arcade is loaded, changing
+  DIP 3/7 to a valid setting for 0.5 seconds selects, resets and launches that
+  game. OFF/ON is reserved and ignored. Unchanged DIPs do not override gamepad
+  selection. Gamepad selection is rejected until both selection DIPs are OFF.
 - **BIDIR:** Tiny VGA PMOD and monitor.
 - **INPUT:** optional Psychogenic Gamepad PMOD (controller 1), or use DIP switches.
 - Use **ASIC_MANUAL_INPUTS** mode and a **25.2 MHz** clock; the FPGA loader sets both.
 - With a gamepad connected, leave DIP **4/5/6 OFF** (latch/clock/data).
 
-Select the game, then **reset**. Switch labels are zero-based:
+Without the demo-board helper, select the game, then **reset**. Switch labels
+are zero-based; this original hardware interface remains unchanged:
 
 | Game | DIP 3 | DIP 7 |
 | --- | --- | --- |
@@ -49,6 +65,26 @@ make                             # FPGA bitstream
 make test                        # All games, gamepad and VGA tests
 make upload PORT=/dev/ttyACM0      # ETR/FabricFox with Tiny Tapeout SDK
 ```
+
+BOOT support is in `scripts/arcade_boot.py`, installed on the board as
+`/arcade_boot.py`; `scripts/run_game.py` is installed as `/arcade_run.py`.
+`scripts/arcade_gamepad.py` is installed as `/arcade_gamepad.py` and passively
+captures PMOD reports using PIO1 state machine 6. The selector briefly releases
+the mode pins to read physical DIPs; the arcade only samples these pins during
+reset. Software asserts only HIGH levels and otherwise releases the pins to
+inputs, avoiding an active LOW drive against an ON DIP. Mode changes briefly
+reset VGA as well as gameplay and restore three lives before launching.
+The existing board `/main.py` has an appended `arcade_boot.install(tt)` hook.
+The original startup/configuration and bitstream were backed up locally in
+`build/board-backup-20261001/`. Restoring that backup of `main.py` and restarting
+the board removes automatic BOOT support. The board's `config.ini` was unchanged.
+On-board checks verified loading, the exact 25.2 MHz clock, launch-input release,
+gameplay consuming a life, and the launcher remaining armed after restart.
+The selector upgrade passed seven host tests; on-board checks confirmed mode
+pin levels, reset/launch and input release. A physical Select+Y press switched
+Pacman to Pong, confirmed both on the monitor and in controller status. The
+arcade RTL hash is unchanged. The loader also accepts an ASIC shuttle index
+containing `tt_um_breakout`; that future-silicon path has not yet been tested.
 
 ## ASIC hardening
 

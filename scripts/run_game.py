@@ -1,4 +1,4 @@
-"""mpremote run: load FabricFox and generate the VGA pixel clock."""
+"""Load the arcade on FabricFox or a supported ASIC shuttle; generate VGA clock."""
 import time
 import machine
 from ttboard.boot.demoboard_detect import DemoboardDetect, DemoboardCarrier
@@ -6,9 +6,9 @@ from ttboard.demoboard import DemoBoard
 from ttboard.mode import RPMode
 
 DemoboardDetect.probe()
-if DemoboardDetect.CarrierVersion != DemoboardCarrier.FPGA:
-    raise RuntimeError('FabricFox FPGA not detected')
 tt = DemoBoard.get()
+if not hasattr(tt.shuttle, 'tt_um_breakout'):
+    raise RuntimeError('This FPGA/shuttle index does not contain tt_um_breakout')
 tt.mode = RPMode.ASIC_MANUAL_INPUTS
 tt.clock_project_stop()
 tt.uio_oe_pico.value = 0
