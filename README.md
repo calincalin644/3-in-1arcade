@@ -4,7 +4,8 @@ Three games in Verilog for the **Tiny Tapeout ETR/FabricFox FPGA kit**, targetin
 **SKY 26d / SKY130, one tile**. Shared video and game logic generate 640×480 VGA
 at 60 Hz with RGB222 (64 colors), without a framebuffer. The onboard 7-segment
 display shows lives as horizontal bars: bottom for one, bottom + middle for two,
-and all three for three; zero is blank.
+and all three for three; zero is blank. On VGA, lives appear as a white bar
+that shortens as lives are lost.
 
 | Breakout | Pong | Pacman-style maze |
 | :---: | :---: | :---: |

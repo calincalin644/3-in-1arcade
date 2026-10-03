@@ -76,13 +76,13 @@ module pellets;
         end
         tick;
         if(state!==3 || lives!==3) $fatal(1,"Final pellet did not win");
-        pixel_x=120; pixel_y=112; #1;
+        pixel_x=128; pixel_y=120; #1;
         if(rgb!==6'b001100) $fatal(1,"Win indicator not green");
         launch=1; tick; launch=0;
         if(state!==0 || remaining!==16'hffff) $fatal(1,"Win restart did not refill pellets");
         launch=1; tick; launch=0; tick;
         expected=remaining;
-        engine.power_ticks=0; engine.a=x; engine.b=y; tick;
+        engine.power_high=0; engine.brick_probe[2:0]=0; engine.a=x; engine.b=y; tick;
         if(lives!==2 || state!==0 || remaining!==expected) $fatal(1,"Life loss reset pellets");
         launch=1; tick; launch=0;
         if(remaining!==expected) $fatal(1,"Respawn reset pellets");
@@ -91,21 +91,21 @@ module pellets;
         if(remaining!==16'hffff || lives!==3 || state!==0) $fatal(1,"Game-over restart");
         // Fresh pickup protects even if the ghost occupies the same cell.
         reset; launch=1; tick; launch=0;
-        engine.x=4; engine.y=28; engine.a=4; engine.b=28; tick;
-        if(lives!==3 || state!==1 || !frightened || engine.power_ticks!==240 ||
+        engine.x=4; engine.y=28; engine.a=4; engine.b=28; engine.motion_phase=0; tick;
+        if(lives!==3 || state!==1 || !frightened || engine.power_ticks!==120 ||
            a!==56 || b!==40 || remaining[12]!==0)
             $fatal(1,"Power pickup/contact priority or ghost respawn");
         pixel_x=101; pixel_y=5; #1;
         if(rgb!==6'b001111) $fatal(1,"Vulnerable ghost not cyan");
         tick;
-        if(engine.power_ticks!==239) $fatal(1,"Consumed power pellet retriggered");
+        if(engine.power_ticks!==119) $fatal(1,"Consumed power pellet retriggered");
         ena=0; tick; ena=1;
-        if(engine.power_ticks!==239) $fatal(1,"Power timer ran while disabled");
+        if(engine.power_ticks!==119) $fatal(1,"Power timer ran while disabled");
         // Former power pellets are now ordinary food and must not refresh the timer.
         for(i=0;i<3;i=i+1) begin
             engine.x=(i==0)?4:52; engine.y=(i<2)?12:28;
             engine.a=56; engine.b=40; tick;
-            if(engine.power_ticks!==(238-i)) $fatal(1,"Ordinary pellet refreshed power timer");
+            if(engine.power_ticks!==(119-((i+1)/2))) $fatal(1,"Ordinary pellet refreshed power timer");
         end
         // Frightened ghost prefers fleeing, including reversal in an open corridor.
         engine.x=4; engine.y=4; engine.a=20; engine.b=4;
@@ -120,6 +120,19 @@ module pellets;
         if(rgb!==6'b110000) $fatal(1,"Ghost did not return to red");
         reset;
         if(frightened) $fatal(1,"Reset retained power timer");
+        // Pickup on either cadence phase lasts 239 or 240 subsequent frames.
+        for(i=0;i<2;i=i+1) begin
+            reset; launch=1; tick; launch=0;
+            engine.x=4; engine.y=28; engine.a=56; engine.b=40;
+            engine.motion_phase=i; tick;
+            if(engine.power_ticks!==120) $fatal(1,"Half-rate timer did not load");
+            j=0;
+            while(frightened && j<242) begin
+                engine.a=56; engine.b=40; tick; j=j+1;
+            end
+            if(j!==(239+i) || engine.power_ticks!==0)
+                $fatal(1,"Wrong half-rate duration, phase=%0d frames=%0d",i,j);
+        end
         $display("PASS: 16 pellets, rendering, collection, no aliases, pause, win, lives, restart");
         $finish;
     end

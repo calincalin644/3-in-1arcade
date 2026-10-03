@@ -127,16 +127,16 @@ module reference_pacman_game (
     localparam SERVE=2'd0, PLAY=2'd1;
     localparam STOP=3'd0, LEFT=3'd1, RIGHT=3'd2, UP=3'd3, DOWN=3'd4;
     wire [2:0] wanted = left ? LEFT : right ? RIGHT : up ? UP : down ? DOWN : STOP;
-    reg [7:0] power_ticks;
+    reg [6:0] power_ticks;
     wire power_eaten = state == PLAY && cell_x == 1 && cell_y == 7 && pellets[12];
-    wire power_active = power_eaten || power_ticks > 1;
+    wire power_active = power_eaten || (frightened && !(motion_phase && power_ticks == 1));
     assign frightened = power_ticks != 0;
     always @(posedge clk) begin
         if (!rst_n) power_ticks <= 0;
         else if (ena && frame) begin
             if (state != PLAY) power_ticks <= 0;
-            else if (power_eaten) power_ticks <= 240;
-            else if (power_ticks != 0) power_ticks <= power_ticks - 1'b1;
+            else if (power_eaten) power_ticks <= 120;
+            else if (power_ticks != 0 && motion_phase) power_ticks <= power_ticks - 1'b1;
         end
     end
     reg motion_phase;

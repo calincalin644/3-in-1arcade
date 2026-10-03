@@ -24,11 +24,12 @@ vulnerable. This is local steering, not complete maze pathfinding.
 The 16 pellets occupy maze columns 1, 5, 9, 13 and rows 1, 3, 5, 7
 (zero-based).
 Entering a pellet cell during play clears it. Eat all 16 to win (green status
-bar). Losing a life retains collected pellets; restarting after win or game over
+bar). All games use a 64×8 logical-pixel status rectangle at (128,120),
+displayed as 128×16 VGA pixels: red for loss and green for victory. Losing a life retains collected pellets; restarting after win or game over
 restores all 16. There is no separate score counter. The player is a solid yellow square without
 mouth animation. One of the 16 pellets, at column 1 and row 7,
 is a 6×6 logical-pixel power pellet; the other 15 pellets are 2×2. Eating it
-starts a 240-frame (four-second) timer. The ghost turns cyan,
+starts a 120-tick timer clocked every second frame (239–240 frames, about four seconds). The ghost turns cyan,
 prefers open directions away from the player and may reverse to escape. Contact
 while powered respawns the ghost without losing a life. A fresh power pickup
 protects against contact in the same update. At timer expiry the ghost returns
@@ -41,7 +42,9 @@ or player X/Y and ghost X/Y in Pacman. Movement and offset calculations use a sh
 6-bit add/subtract datapath. A single gameplay wall decoder checks the eight maze
 neighbors in successive operations; the renderer has its own wall lookup.
 The six-bit brick collision probe holds `{hit, unused, row, column}` in Breakout
-and doubles as ghost direction storage in bits [5:3] for Pacman. The player
+and doubles as ghost direction storage in bits [5:3] for Pacman. Its lower
+three bits store the low bits of the power timer during Pacman; only four
+additional flip-flops store the upper timer bits. The player
 request is decoded directly from the frame-latched buttons, without a separate
 remembered request.
 The 16-bit bitmap stores either Pacman pellets or Breakout bricks. The bitmap uses explicit
@@ -107,7 +110,9 @@ The Psychogenic Gamepad PMOD uses ui[4]=latch, ui[5]=clock, ui[6]=data.
 It is an input-only serial protocol: sample rising clock edges and commit the
 last 12 bits on the rising latch edge. This selects controller 1 under the
 default two-controller firmware configuration. A disconnected controller
-reports all ones. Buttons also release after about two seconds without a report.
+reports all ones. Buttons release after 63 frame updates without a report (about 1.03–1.05
+seconds at 60 Hz). The connected PMOD repeats held reports about once per second;
+a half-second timeout is therefore too short for it.
 
 ## How to test
 
@@ -145,3 +150,9 @@ on RTL or the gate-level netlist using only package pins.
 - Optional Psychogenic SNES-compatible Gamepad PMOD and controller.
 - Alternatively, three active-high buttons on INPUT, or the built-in DIP switches.
 - ETR/FabricFox FPGA breakout for FPGA testing, or a matching Tiny Tapeout ASIC.
+
+
+The on-screen lives display is a contiguous white bar at logical (32,12),
+four pixels high. Its width is eight pixels per remaining life (8/16/24 for
+1/2/3 lives), with no bar at zero. All three games use the same position;
+the seven-segment horizontal-bar display is unchanged.

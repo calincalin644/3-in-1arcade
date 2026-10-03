@@ -103,7 +103,7 @@ module breakout_controls (
     reg serial_prev, latch_prev;
     reg [11:0] shift;
     reg [4:0] pad;
-    reg [6:0] age;
+    reg [5:0] age;
     reg [2:0] dip_previous, dip_stable;
     reg launch_previous;
     wire report = sync2[3] && !latch_prev;
@@ -115,7 +115,7 @@ module breakout_controls (
         if (!rst_n) begin
             sync1 <= 0; sync2 <= 0;
             serial_prev <= 0; latch_prev <= 0;
-            shift <= 12'hfff; pad <= 0; age <= 127;
+            shift <= 12'hfff; pad <= 0; age <= 62;
             dip_previous <= 0; dip_stable <= 0; launch_previous <= 0;
         end else begin
             sync1 <= raw; sync2 <= sync1;
@@ -128,8 +128,8 @@ module breakout_controls (
                 if (dip_previous[1] == sync2[1]) dip_stable[1] <= sync2[1];
                 if (dip_previous[2] == sync2[2]) dip_stable[2] <= sync2[2];
                 launch_previous <= fire;
-                if (age != 127) age <= age + 1'b1;
-                if (age >= 120) pad <= 0; // Disconnect/stale report: release buttons.
+                if (age != 62) age <= age + 1'b1;
+                if (age == 62) pad <= 0; // Disconnect/stale report: release buttons.
             end
             if (report) begin
                 // Last 12 bits are controller 1: B,Y,Select,Start,U,D,L,R,A,X,L,R.
@@ -200,8 +200,10 @@ module arcade_engine (
     // IDLE toggles this on PLAY frames. Pacman uses the old value there;
     // CPU_STEP uses the new value later in the same update.
     reg motion_phase; // Half-rate ball/maze updates; inputs sampled every frame.
-    reg [7:0] power_ticks; // 240 video frames = four seconds at 60 Hz.
-    assign frightened = |power_ticks;
+    reg [3:0] power_high;
+    // Seven timer bits: three reuse the Breakout-only probe bits below.
+    wire [6:0] power_ticks = {power_high, brick_probe[2:0]};
+    assign frightened = pacman_mode && (|power_ticks);
     reg [4:0] buttons;
     // Maze: {down,up,right,left}; paddles: {CPU direction,CPU hit,
     // player direction,player hit}. These uses never overlap.
@@ -296,15 +298,15 @@ module arcade_engine (
     wire pellet_clear = pacman_mode && phase == IDLE && frame && state == PLAY && pellet_cell;
     // One large pellet: column 1, row 7 (index 12).
     wire power_eaten = pellet_clear && bricks[12] && pellet_index == 4'd12;
-    wire power_active = power_eaten || power_ticks > 1;
+    wire power_active = power_eaten || (frightened && !(motion_phase && power_ticks == 1));
     wire ghost_contact = x[5:2] == a[5:2] && y[5:2] == b[5:2];
+    // Existing cadence supplies 30 Hz; phase at pickup gives 239–240 frames.
+    wire [6:0] power_next = state != PLAY ? 7'd0 : power_eaten ? 7'd120 :
+        (frightened && motion_phase) ? power_ticks - 1'b1 : power_ticks;
     always @(posedge clk) begin
-        if (!rst_n) power_ticks <= 0;
-        else if (ena && phase == IDLE && frame) begin
-            if (!pacman_mode || state != PLAY) power_ticks <= 0;
-            else if (power_eaten) power_ticks <= 240;
-            else if (frightened) power_ticks <= power_ticks - 1'b1;
-        end
+        if (!rst_n) power_high <= 0;
+        else if (ena && phase == IDLE && frame)
+            power_high <= pacman_mode ? power_next[6:3] : 4'd0;
     end
     wire [3:0] clear_index = pacman_mode ? pellet_index : brick_probe[3:0];
     wire brick_clear = phase == BALL_Y && alu_ready && !pong_mode && brick_probe[5] &&
@@ -320,7 +322,7 @@ module arcade_engine (
 
     always @(posedge clk) begin
         if (!rst_n) begin
-            phase <= IDLE; buttons <= 0; flags <= 0; brick_probe <= {LEFT, RIGHT};
+            phase <= IDLE; buttons <= 0; flags <= 0; brick_probe <= {LEFT, STOP};
             alu_result <= 0; alu_ready <= 0; motion_phase <= 0;
             x <= pacman_mode ? 6'd4 : 6'd32;
             y <= pacman_mode ? 6'd4 : serve_y;
@@ -340,6 +342,7 @@ module arcade_engine (
                         (pong_mode ? (y >= 59 || y <= 1) : y >= 59);
                     won <= !pong_mode && bricks == 0;
                     if (pacman_mode) begin
+                        brick_probe[2:0] <= power_next[2:0];
                         if ((state == SERVE || state[1]) && launch) begin
                             x<=4; y<=4; a<=56; b<=40;
                             direction<=RIGHT; brick_probe[5:3] <=LEFT;
@@ -487,10 +490,7 @@ module pacman_renderer (
     wire ghost_shape = x[8:4] == ghost_cell_x && y[7:4] == ghost_cell_y &&
                        x[3:0] >= 4 && x[3:0] <= 11 &&
                        y[3:0] >= 4 && y[3:0] <= 11;
-    wire life_icon = y[7:2] == 0 &&
-        ((x[8:2] == 9 && lives >= 1) ||
-         (x[8:2] == 11 && lives >= 2) ||
-         (x[8:2] == 13 && lives >= 3));
+    wire life_icon = y[7:2] == 3 && x[8:5] == 1 && x[4:3] < lives;
     always @* begin
         rgb = 0;
         if (active) begin
@@ -502,7 +502,7 @@ module pacman_renderer (
             if (ghost_shape) rgb = frightened ? 6'b00_11_11 : 6'b11_00_00;
             if (pac_shape) rgb = 6'b11_11_00;
             if (life_icon) rgb = 6'b11_11_11;
-            if (state[1] && x >= 120 && x < 200 && y >= 112 && y < 118)
+            if (state[1] && x[8:6] == 3'd2 && y[7:3] == 5'd15)
                 rgb = state[0] ? 6'b00_11_00 : 6'b11_00_00;
         end
     end
@@ -531,10 +531,7 @@ module breakout_renderer (
     wire brick = y >= 32 && y < 64 && bricks[brick_index] &&
                  px[4:0] >= 1 && px[4:0] < 31 && y[3:0] >= 1 && y[3:0] < 15;
     wire [7:0] paddle_delta = px - paddle;
-    wire life_icon = y[7:2] == 3 &&
-        ((x[8:2] == 9 && lives >= 1) ||
-         (x[8:2] == 11 && lives >= 2) ||
-         (x[8:2] == 13 && lives >= 3));
+    wire life_icon = y[7:2] == 3 && x[8:5] == 1 && x[4:3] < lives;
     always @* begin
         rgb = 0;
         if (active) begin
@@ -555,7 +552,7 @@ module breakout_renderer (
                     if (ball && state < 2) rgb = 6'b11_11_11;
                 end
                 // Central status bar: red = game over; green = all bricks cleared.
-                if (state[1] && x >= 120 && x < 200 && y >= 120 && y < 126)
+                if (state[1] && x[8:6] == 3'd2 && y[7:3] == 5'd15)
                     rgb = state[0] ? 6'b00_11_00 : 6'b11_00_00;
             end
             if (life_icon) rgb = 6'b11_11_11;

@@ -537,3 +537,159 @@ each game passed. The external-pin test was adjusted for the removed dots but
 was not rerun for this revision. The restored flee and wall-detour cases pass.
 The bitstream was uploaded, its SHA256 verified and Pacman started with the
 selection helper restored.
+
+
+### Share the power timer with Breakout scratch storage
+
+The power timer now counts 120 alternate-frame ticks in seven bits, using the
+existing movement-phase bit. Bits [2:0] reuse `brick_probe[2:0]`, which is not
+otherwise used by Pacman; only four dedicated high bits remain. Probe bits
+[5:3] retain the ghost heading. Reset clears the low timer bits, while Breakout
+still overwrites its complete probe before using it. Both register writes are
+kept in a single owner process to avoid conflicting drivers.
+
+Pickup phase gives 239 or 240 frames of protection (3.983–4.000 seconds at
+60 Hz). Tests cover both phases, low-bit carry/borrow, expiry/contact priority,
+pause, no repeated pickup, pellet collection and game switching. Unit, pellet
+and 10,000-frame-per-game reference checks passed. No full pin-level rerun was
+performed for this internal storage change.
+
+Local SKY130 area falls from 10,162.2464 to 10,029.6192 µm²: 132.6272 µm²
+(1.31%) saved. Flip-flops fall from 160 to 156. FPGA use is 937 logic cells and
+final timing is 29.16 MHz (passes 25.2 MHz). One-tile physical fit still requires
+fresh hardening; these are local synthesis estimates.
+
+A separate temporary experiment removed both win/lose status rectangles while
+retaining the same gameplay FSM. This mapped to 10,054.6432 µm² and 156 FFs,
+25.0240 µm² larger than keeping the bars. The bars have no dedicated registers;
+whole-design remapping means this difference is not an intrinsic gate-area cost.
+The actual design keeps both bars, as their removal provided no measured saving.
+The optimized bitstream (with status rectangles retained) was uploaded, its
+SHA256 verified, and Pacman started with the selection helper restored.
+
+### Status rectangle shape experiments (not adopted)
+
+Temporary copies of the shared-timer RTL changed only the two status-rectangle
+conditions. Sizes below use 320×240 logical pixels; displayed dimensions are
+twice as large in each axis. All variants retain 156 FFs.
+
+| Shape / placement | Local SKY130 area (µm²) |
+| --- | ---: |
+| Current 80×6, maze y=112 and paddle games y=120 | 10,029.6192 |
+| 64×8 at x=128, y=120 in all games | 9,950.7936 |
+| 64×4 at x=128, y=120 in all games | 10,098.4352 |
+| 64×8 at x=128, retaining separate y=112/120 | 10,040.8800 |
+| 80×8, common y=120 | 10,144.7296 |
+
+The best measured variant saves 78.8256 µm² (0.79%). Its condition is
+`x[8:6] == 3'd2 && y[7:3] == 5'd15`, allowing shared bit-slice comparisons
+instead of general bounds tests and separate vertical positions. Results are
+whole-design mapping differences; smaller visible shapes do not necessarily
+produce smaller mapped circuits. These are synthesis-only experiments, with
+no new FPGA timing or physical-fit claim. Source and board retain the original
+rectangles pending a decision to adopt a shape change.
+
+
+### Adopt the 64×8 status rectangle
+
+Adopted the measured best rectangle in both renderers: x=128..191 and
+y=120..127 in logical pixels, shared by all three games. Colour remains red
+for loss and green for victory. The adopted source is byte-identical to the
+measured `aligned_same_y8` experiment: 9,950.7936 µm² and 156 FFs.
+The pellet/power/win-rendering test passed after updating its sample position.
+FPGA use is 883 logic cells, with final timing of 32.47 MHz (passes 25.2 MHz).
+No new physical hardening was run.
+The adopted status-rectangle FPGA bitstream was uploaded, its SHA256 verified,
+and Pacman started with the selection helper restored.
+
+### Life-display shape experiments (not adopted)
+
+Temporary copies of the 64×8-status-rectangle design changed only the on-screen
+life marker expressions. The life counter, gameplay and seven-segment output
+were retained. All variants have 156 FFs; sizes use logical rendering pixels.
+
+| Life display | Local SKY130 area (µm²) |
+| --- | ---: |
+| Current three separated markers, different y per renderer | 9,950.7936 |
+| Original markers, common y=0 | 9,990.8320 |
+| Original markers, common y=12 | 10,035.8752 |
+| Contiguous bar, common y=12, x=32, width 4×lives | 9,895.7408 |
+| Aligned spaced markers, common y=12 | 9,978.3200 |
+| Two binary-coded lights, common y=12 | 9,928.2720 |
+
+The best measured shape uses `y[7:2] == 3 && x[8:4] == 2 && x[3:2] < lives`:
+height four, width 4/8/12 for 1/2/3 lives, blank at zero. It saves 55.0528 µm²
+(0.55%) while preserving three lives. Binary lights save less and are less
+intuitive. These are synthesis-only experiments, not adopted or uploaded.
+Reducing the maximum lives from three to two still requires two counter bits;
+four lives would require three bits in a conventional binary counter. No
+lives-count changes were implemented or measured in these experiments.
+
+
+### Adopt contiguous life bar
+
+Adopted the measured compact bar in both renderers: logical (32,12), height 4,
+width 4×lives. The source matches the measured compact-bar experiment exactly:
+9,895.7408 µm², 156 FFs. The pellet/power/win-rendering regression passes.
+FPGA use is 886 logic cells; final timing is 33.21 MHz (passes 25.2 MHz).
+Gameplay life count and seven-segment outputs are unchanged. The source and
+board now use this version; no new hardening was run.
+
+
+### Wider contiguous life bar
+
+Doubled the life-bar width to eight logical pixels per life, retaining logical
+origin (32,12) and height four. Full lives now display a 24×4 logical-pixel bar,
+or 48×8 VGA pixels. Both renderers use
+`y[7:2] == 3 && x[8:5] == 1 && x[4:3] < lives`.
+Local SKY130 synthesis is 9,889.4848 µm² and 156 FFs: 6.2560 µm² smaller
+than the narrow bar. FPGA use is 883 logic cells and final timing is 32.84 MHz,
+passing 25.2 MHz. Gameplay and the seven-segment display are unchanged.
+This rendering-only change was checked by synthesis and FPGA implementation;
+no new physical hardening was run.
+
+
+### Shorter gamepad timeout and counter-sharing experiment
+
+Measured the connected PMOD both released and with Right held. Released report
+intervals were 981–1001 ms; held Right (0x10) intervals were 980–1001 ms.
+A proposed five-bit, frame-rate watchdog would expire around half a second and
+interrupt held movement, so it was rejected despite its lower area.
+
+Also prototyped reusing a continuously running version of the existing alternating
+frame bit, with a five-bit watchdog at 30 Hz. This mapped to 10,073.4112 µm²
+and 154 FFs: 183.9264 µm² larger than the baseline. The 10,000-frame comparison
+passed, but a directed power-timer test had a changed pause-phase assumption;
+this prototype was not adopted or loaded. Neither its global phase change nor
+its altered pause cadence is present in the actual design.
+
+Adopted a six-bit age counter saturating at 62. Reports reset it to zero; stale
+buttons clear on the 63rd frame update, giving roughly 1.03–1.05 seconds.
+This accommodates the measured one-second reports without changing game cadence.
+Local synthesis remains exactly 9,889.4848 µm², but FFs decrease from 156 to 155;
+other mapped logic offsets the FF footprint saving. FPGA use decreases to 860
+logic cells and final timing is 33.67 MHz (passes 25.2 MHz).
+
+New unit checks retain held input through repeated 60-frame report intervals,
+check the 62/63-frame boundary, saturation, recovery after timeout, and immediate
+release on the disconnected-controller marker. The full unit suite passed.
+The power effect, gameplay and rendering logic were not changed.
+
+
+### Brick visibility mask experiment (2026-10-03)
+
+Tested moving the Pong brick-visibility condition from the 16-bit brick bank
+before selection to the selected brick bit inside the shared renderer.
+A Yosys SAT proof verified identical RGB output for every renderer input
+combination, with the original renderer receiving the masked bank.
+
+Using the same local SKY130 HD synthesis recipe on the complete three-game
+core, the unchanged baseline measured 9,889.4848 square micrometers and 155
+flip-flops; the candidate measured 10,037.1264 square micrometers and 155
+flip-flops. The candidate increased area by 147.6416 square micrometers
+(1.49%), so it was not adopted. Equivalent Boolean expressions can lead to
+different optimization and cell-mapping results. These are synthesis areas,
+not routed occupancy measurements. No FPGA reprogramming was needed.
+
+Experiment sources, synthesis logs, and the equivalence proof are retained
+in `build/brick-mask-experiment/` (local build artifacts).

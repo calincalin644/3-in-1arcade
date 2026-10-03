@@ -117,8 +117,22 @@ module unit;
         if(!launch) $fatal(1,"Start decode");
         tick;
         packet(24'h000020);
-        repeat(122) tick;
+        // The PMOD repeats held-button reports about once per second.
+        for(i=0;i<3;i=i+1) begin
+            repeat(60) tick;
+            if(!left) $fatal(1,"One-second report interval released held button");
+            packet(24'h000020);
+        end
+        repeat(62) tick;
+        if(!left) $fatal(1,"Controller timed out before its deadline");
+        tick;
         if(left) $fatal(1,"Stale controller held left");
+        repeat(4) tick;
+        if(left) $fatal(1,"Timeout counter wrapped");
+        packet(24'h000020);
+        if(!left) $fatal(1,"Report after timeout did not restore controls");
+        packet(24'hffffff);
+        if(left) $fatal(1,"Disconnected report did not release controls");
 
         // Coarse positions count four logical pixels. Paddles update each frame.
         reset; gl=1; repeat(60) tick;
@@ -242,7 +256,7 @@ module unit;
         force pac.flags=4'b0010; force pac.brick_probe[5:3]=3'd1; #1;
         if(pac.ghost_turn!==3'd2) $fatal(1,"Ghost refused dead-end reversal");
         release pac.flags; release pac.brick_probe[5:3];
-        @(negedge clk); pac.x=4; pac.y=4; pac.a=4; pac.b=4; pac.power_ticks=0; pac_session.state=1;
+        @(negedge clk); pac.x=4; pac.y=4; pac.a=4; pac.b=4; pac.power_high=0; pac.brick_probe[2:0]=0; pac_session.state=1;
         tick; if(paclives!==2 || pacstate!==0) $fatal(1,"Pacman life");
         // Inputs belong to the frame request, not the later ALU cycles.
         // Pausing in mid-transaction must hold both phase and position.
