@@ -878,3 +878,14 @@ Logs, individual result XML, source snapshots and a hash summary are in
 `build/faster-tests/`; earlier runs are in `build/full-regression/`.
 No gate-level simulation of the current revision was run. The new hardening
 workflow must run these tests against its own newly generated routed netlist.
+
+
+### Current game documentation refresh (2026-10-03)
+
+Refreshed README, submission gameplay/wiring guide and verification notes to
+match the current teleport pellet, Pong rebound rule, Breakout wait-for-serve
+helper behavior, launch-only debounce, life bars, 147 FFs and 9,424.0384 µm²
+local area. The pin descriptions now identify unused seven-segment outputs as
+always off. Current RTL/FPGA results are explicitly separate from the earlier
+`299f5d5` hardening and gate-level results. Screenshots remain illustrative
+historical images and are labeled accordingly. No RTL or bitstream changed.

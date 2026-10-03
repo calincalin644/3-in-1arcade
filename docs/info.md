@@ -1,163 +1,231 @@
 ## How it works
 
-The default game is Tiny Breakout, a one-player paddle-and-ball game. Destroy the 8 by 2 brick
-field without losing all three lives. The ball bounces off the walls, bricks,
-and paddle. Hitting the left or right half of the paddle changes the ball's
-horizontal direction. The paddle moves at a constant speed while a direction
-is held. Holding both directions stops it.
+Three games share one movement engine, a lives/session controller and VGA timing.
+The project targets one Tiny Tapeout SKY130 tile and runs on the ETR demo board
+with a FabricFox FPGA ASIC simulator. The current version is FPGA-tested; an
+earlier revision hardened successfully, but the updated RTL needs a new run.
 
-Set `ui_in[3]` high during reset to select Pong. Pong uses the same video timing
-and controls, with the player paddle at the bottom and a simple CPU paddle at
-the top. The CPU snaps to the ball's 32-logical-pixel column each frame,
-with collision checks on those same column boundaries. Its horizontal rebound
-uses the impact-half bit XOR the column-parity bit, so the default serve no
-longer repeats indefinitely over an unmoved player paddle. This is deterministic,
-not random. Launch starts a rally; missing either paddle costs a life. Set both
-`ui_in[3]` and `ui_in[7]` high during reset to select the Pacman-style maze.
-Pacman uses a constant tile map, 16 collectible pellets, a moving ghost and four-direction
-gamepad controls without a framebuffer; launch starts a life. The player moves
-only while a direction is held and stops at the next movement update after
-release. Turns remain restricted to maze-cell boundaries: between boundaries,
-a held direction continues the current heading until a turn is safe. At a
-boundary, a blocked requested direction stops the player. Simultaneous directions
-have priority left, right, up, then down; the ghost moves independently. It avoids immediately reversing when another
-open route exists, allowing it to escape two-cell oscillation beside walls.
-It compares its position with the player to choose a chasing direction. This is local steering, not complete maze pathfinding.
-The 16 pellets occupy maze columns 1, 5, 9, 13 and rows 1, 3, 5, 7
-(zero-based).
-Entering a pellet cell during play clears it. Eat all 16 to win (green status
-bar). All games use a 64×8 logical-pixel status rectangle at (128,120),
-displayed as 128×16 VGA pixels: red for loss and green for victory. Losing a life retains collected pellets; restarting after win or game over
-restores all 16. There is no separate score counter. The player is a solid yellow square without
-mouth animation. One of the 16 pellets, at column 1 and row 7,
-is a 6×6 logical-pixel power pellet; the other 15 pellets are 2×2. Eating it
-immediately teleports the ghost to its starting position (maze column 14,
-row 10), facing left. It stays red and resumes normal chasing on subsequent
-ghost updates. Pickup takes priority over contact in the same update, but there
-is no lasting immunity, vulnerability timer, or fleeing mode. The cleared pellet
-cannot teleport the ghost again until restart; losing a life does not restore it.
-The power pellet shares the existing bitmap and counts toward victory.
-Disabling the engine (`ena=0`) pauses collection and teleportation.
+### Breakout
 
-All three games use one sequential movement engine and one lives/session controller.
-Four 6-bit position registers serve ball X/Y and paddle X positions in Breakout/Pong,
-or player X/Y and ghost X/Y in Pacman. Movement and offset calculations use a shared
-6-bit add/subtract datapath. A single gameplay wall decoder checks the eight maze
-neighbors in successive operations; the renderer has its own wall lookup.
-The six-bit brick collision probe holds `{hit, unused, row, column}` in Breakout
-and doubles as ghost direction storage in bits [5:3] for Pacman. Its lower
-three bits are only needed by Breakout; the teleport effect needs no timer or
-additional state bits. The player
-request is decoded directly from the frame-latched buttons, without a separate
-remembered request.
-The 16-bit bitmap stores either Pacman pellets or Breakout bricks. The bitmap uses explicit
-per-bit next-state logic for clear/reset,
-avoiding a variable-index write mux while retaining the same collision priority.
-Reset and respawn initialize the ghost direction; Breakout overwrites the probe
-before using it. The current player heading remains stored to allow safe movement
-between maze-cell boundaries.
+Clear all 16 bricks, arranged in eight columns and two rows, before losing three
+lives. The paddle moves at constant speed while Left or Right is held; holding
+both stops it. The ball bounces off the side and top walls, bricks and paddle.
+Hitting the left or right paddle half sets the ball's horizontal direction.
+A missed ball costs a life. Brick gaps are decorative: collision selects the
+brick cell using the ball's leading vertical point.
 
-Each stored position counts four rendering pixels, giving 64 horizontal
-positions across the playfield. The renderer expands coordinates by appending
-two zero bits. Paddles and Pacman update every PLAY frame by one grid unit;
-balls and the ghost update every second PLAY frame. At 60 Hz, Pacman therefore
-moves twice as fast as the ghost: one maze cell per four frames versus eight.
-Controls and loss/win checks still run every frame. The 16 bricks form two taller rows in the same field area; paddle/ball sizes
-and the maze layout remain unchanged.
+Selecting Breakout through the demo-board helper leaves the ball on the paddle
+until A, Start or BOOT is pressed. All sixteen bricks remain visible while
+waiting. The former automatic serve could remove the bottom-right brick about
+1.28 seconds after selection, making it appear absent at startup.
 
-Controls are captured at vertical blanking. Updates complete within 32 pixel clocks;
-the renderer sees the completed positions before the next active frame. Each
-operation takes two clocks to preserve timing. `ena=0` pauses an in-progress update,
-and reset aborts it. Mode selection is held until reset. Game-over occurs on the
-last lost life; restart restores three lives and resets the selected game's objects.
+### Pong
 
-The display uses standard Tiny VGA RGB222 wiring (64 available colors),
-640x480 timing, and 320x240 logical coordinates. The input clock is 25.2 MHz:
-800 clocks per line and 525 lines per frame give exactly 60 frames per second.
-Horizontal sync is active low for pixels 656..751, and vertical sync for lines
-490..491. RGB is black during blanking. Game updates occur in vertical blanking.
-No framebuffer, external memory, or programmable palette is used. Bricks use
-flat row colors with black gaps. Maze walls and the ghost also use flat colors.
-Decorative shading and the pellet-score indicator have been removed to save area.
+The player controls the bottom paddle; the CPU paddle snaps to the ball's
+32-logical-pixel column each frame. Collision uses the same column boundaries.
+The CPU's horizontal rebound combines the impact-half bit with column parity
+(`x[2] ^ x[3]` in the movement grid). This deterministic rule breaks the previous
+default repeating rally without adding state. With an unmoved paddle, the default
+serve now loses a life after about 3.43 seconds; other trajectories depend on play.
+Missing either paddle costs a life. There is no separate score or win condition.
 
-White blocks at the upper left show remaining lives. A red center bar means
-game over; a green bar means all bricks were cleared. Launch/restart starts a
-fresh game from either end state, and a second press launches its ball.
+### Pacman-style maze
 
-The onboard 7-segment display shows the selected game's remaining lives as
-horizontal bars: bottom for one, bottom + middle for two, all three for three,
-and blank for zero. Vertical segments and the decimal point remain off. VGA uses `uio_out[7:0]` on BIDIR with all eight output
-enables set; `uo_out[6:0]` drives segments a through g, and the decimal point
-is off. Move the VGA PMOD from OUTPUT to BIDIR when upgrading an older build.
-The loader leaves the RP2350 bidirectional pins as inputs.
+Pacman moves only while a direction is held and stops at the next movement
+update after release. Turns are allowed at maze-cell boundaries. Between
+boundaries, holding a direction continues the stored heading until a turn is
+safe; at a boundary, a blocked requested direction stops movement. Simultaneous
+directions have priority Left, Right, Up, then Down.
 
-### Controls
+Pacman moves twice as fast as the red ghost. The ghost keeps moving when the
+player stops and chooses legal directions toward the player. It avoids immediate
+reversal when another opening exists, but can reverse at a dead end. This is a
+local chase heuristic, not complete maze pathfinding.
+
+Eat all **16 yellow pellets** to win. They occupy maze columns 1, 5, 9, 13 and
+rows 1, 3, 5, 7 (zero-based). The pellet at column 1, row 7 is larger: collecting
+it immediately teleports the ghost to its initial cell, column 14, row 10,
+facing left. The ghost remains red and resumes chasing on subsequent updates.
+Pickup takes priority over contact in the same update; there is no lasting
+immunity, vulnerability timer, fleeing mode or edible ghost.
+
+The other fifteen pellets are ordinary food. Losing a life preserves collected
+pellets, including the teleport pellet; restarting after victory or game over
+restores all sixteen. Pacman is a solid yellow square with no mouth animation.
+There is no separate score counter.
+
+### Lives and game states
+
+All games start with three lives. After a lost life, press launch again. A red
+64×8 logical-pixel rectangle at (128,120) indicates game over. A green rectangle
+indicates that all bricks or pellets were collected. From either end state,
+press launch once to reset the game, release, then press again to start play.
+
+The on-screen lives indicator is a contiguous white bar at logical (32,12), four
+pixels high and 8/16/24 pixels wide for 1/2/3 lives. It disappears at zero.
+The onboard seven-segment display uses only horizontal segments:
+
+| Lives | Lit segments |
+| --- | --- |
+| 3 | Bottom + middle + top (`d`, `g`, `a`) |
+| 2 | Bottom + middle (`d`, `g`) |
+| 1 | Bottom (`d`) |
+| 0 | None |
+
+Vertical segments and the decimal point remain off.
+
+### Video and shared hardware
+
+| Property | Current implementation |
+| --- | --- |
+| Clock / frame rate | 25.2 MHz / 60 Hz |
+| VGA timing | 640×480 active, 800×525 total |
+| Logical rendering coordinates | 320×240 |
+| Colors | RGB222: 64 available colors, fixed game colors |
+| Position grid | Four logical pixels per step; 64 horizontal positions in the playfield |
+| Movement cadence | Paddles and Pacman every play frame; balls and ghost every second play frame |
+| Bitmap storage | 16 shared bits for Breakout bricks or Pacman pellets |
+| Position storage | Four shared 6-bit registers for ball/paddles or Pacman/ghost |
+| Arithmetic | Shared 6-bit add/subtract datapath and registered result |
+| Video output | RGB and both sync signals registered together |
+| Memory / PLL / DSP blocks | None; no framebuffer |
+
+RGB is black during blanking. Horizontal sync is active low at pixels 656–751,
+and vertical sync at lines 490–491. Gameplay updates start in vertical blanking
+and complete before the next active image. The sequential engine checks the
+four neighbors of each maze character with one gameplay wall decoder; the
+renderer has a separate wall lookup. Each arithmetic microstep computes and
+then consumes its result on the following clock.
+
+The six-bit brick probe stores collision information for Breakout and ghost
+heading in bits [5:3] for Pacman. Its lower bits are not needed by Pacman now
+that timed vulnerability has been removed. Teleportation uses existing position
+and heading registers. The 16-bit brick/pellet bank has per-bit clear/reset logic.
+`ena=0` pauses game-state updates; reset aborts an update. Video timing continues.
+Mode selection is held until reset.
+
+| Combined resource measurement | Current value |
+| --- | ---: |
+| Local SKY130 synthesis cell area | 9,424.0384 µm² |
+| Flip-flops | 147 |
+| FabricFox packed logic cells | 827 / 5,280 |
+| FPGA final timing estimate | 30.95 MHz (25.2 MHz target passes) |
+
+These are local synthesis and FPGA results, not current routed ASIC occupancy.
+The previously hardened revision and its remaining warnings are described in
+[verification notes](gate-level-verification.md).
+
+## Controls and connections
+
+Connect the Tiny VGA PMOD to **BIDIR**, and the optional Psychogenic Gamepad PMOD
+to **INPUT**. One controller in connector **1** is enough; RTL ignores controller
+2. Leave DIP 4/5/6 OFF when the PMOD drives latch, serial clock and data.
+The loader selects `ASIC_MANUAL_INPUTS` and leaves the RP2350 BIDIR pins as inputs.
 
 | Action | DIP/custom button | Controller 1 |
 | --- | --- | --- |
-| Move left | ui[0], switch 0 | Left |
-| Move right | ui[1], switch 1 | Right |
-| Pacman up/down | — | Up / Down |
-| Launch/restart | ui[2], switch 2 OFF to ON | A or Start |
+| Left | ui[0], switch 0 | D-pad Left |
+| Right | ui[1], switch 1 | D-pad Right |
+| Pacman up/down | — | D-pad Up / Down |
+| Launch/restart | ui[2], switch 2 OFF → ON | A or Start |
 
-`ui[3]` and `ui[7]` are sampled while reset is asserted: `00` selects Breakout,
-`01` selects Pong, and `11` selects Pacman. On the board these are DIP 3 and DIP
-7. The gamepad remains on ui[4:6]; its U/D signals are used by Pacman.
+Switch numbers are zero-based. Left/right buttons retain two-stage synchronizers
+but have no debounce; gameplay samples their levels at frame updates. The
+DIP/custom launch button alone requires two matching frame samples. Hold its press or release for at
+least 50 ms. Launch is edge-triggered, so holding it does not repeatedly launch.
 
-Board switch labels are zero-based (0–7), matching ui[] indices.
-Inputs are active high. Left/right DIP/buttons pass through two-stage
-synchronizers without debounce; the game uses their levels at the next frame
-update. Launch alone requires two matching video-frame samples. Hold a launch
-press or release for at least 50 ms.
-Launch is edge-triggered, so a held switch does not launch repeatedly.
+Without the demo-board helper, choose the mode and reset with the clock running:
 
-The Psychogenic Gamepad PMOD uses ui[4]=latch, ui[5]=clock, ui[6]=data.
-It is an input-only serial protocol: sample rising clock edges and commit the
-last 12 bits on the rising latch edge. This selects controller 1 under the
-default two-controller firmware configuration. A disconnected controller
-reports all ones. Buttons release after 63 frame updates without a report (about 1.03–1.05
-seconds at 60 Hz). The connected PMOD repeats held reports about once per second;
-a half-second timeout is therefore too short for it.
+| Game | ui[3] / DIP 3 | ui[7] / DIP 7 |
+| --- | --- | --- |
+| Breakout | OFF | OFF |
+| Pong | ON | OFF |
+| Pacman | ON | ON |
+| Reserved (RTL falls back to Breakout) | OFF | ON |
+
+The Psychogenic protocol uses ui[4]=latch, ui[5]=serial clock and ui[6]=data.
+The receiver samples rising serial-clock edges and commits the final 12 bits
+on the rising latch edge, selecting controller 1 with the default two-controller
+firmware. An all-ones report releases buttons immediately. After 63 frame
+updates without a report (about 1.03–1.05 seconds), the watchdog also releases
+them. Held reports arrive about once per second, so a half-second timeout would
+interrupt valid movement. All six external control signals have two-stage
+synchronizers.
+
+### Demo-board helper
+
+The helper provides game selection without pressing physical reset:
+
+- Keep DIP 3/7 OFF; press Select+B for Breakout, Select+Y for Pong or Select+A
+  for Pacman. Release the shortcut before selecting again.
+- Once the arcade is loaded, a valid DIP 3/7 change stable for 0.5 seconds also
+  selects a game. The helper ignores the reserved setting. Unchanged DIPs do
+  not override a gamepad selection.
+- Selection resets the game and restores three lives. Breakout waits for an
+  explicit serve; Pong and Pacman auto-launch. VGA also resets briefly.
+- From the board's factory test, BOOT loads and starts the selected arcade game;
+  subsequent BOOT presses act as launch/restart. Keep DIP 2 OFF when using BOOT.
+
+Install `scripts/arcade_boot.py` as `/arcade_boot.py`,
+`scripts/arcade_gamepad.py` as `/arcade_gamepad.py`, and `scripts/run_game.py` as
+`/arcade_run.py` on a board with the Tiny Tapeout SDK. The connected board's
+`main.py` already calls `arcade_boot.install(tt)` after normal SDK startup.
+The FPGA bitstream is `/bitstreams/tt_um_breakout.bin`. Updating the bitstream
+does not install or update the Python helper files automatically.
+
+The gamepad helper passively captures reports using PIO1 state machine 6. It
+briefly releases the mode pins to read physical DIPs and only drives HIGH or
+releases a pin to input, avoiding an active LOW against an ON switch. These
+features run on the demo-board microcontroller and occupy no ASIC area. The
+loader supports a shuttle index containing `tt_um_breakout`, but operation with
+the manufactured ASIC has not yet been tested.
 
 ## How to test
 
-1. Connect Tiny VGA to the BIDIR PMOD and a VGA monitor.
-2. Optionally connect the Psychogenic Gamepad PMOD to INPUT.
-3. Select the project in manual-input mode, start a 25,200,000 Hz project clock,
-   and assert/release the synchronous active-low reset with the clock running.
-4. Move the paddle with Left/Right or DIP switches 0/1. Press A/Start or toggle
-   DIP 2 from OFF to ON to launch. Return DIP 2 to OFF before another launch.
-5. Check brick removal, rebounds, lost lives and the red/green end-state bars.
+1. Connect VGA to BIDIR and optionally the gamepad PMOD to INPUT, connector 1.
+2. Load the project, use manual-input mode and a 25.2 MHz clock, and reset.
+3. In Breakout, verify all sixteen bricks while waiting, then launch and check
+   movement, brick removal, paddle rebounds and lost lives.
+4. In Pong, launch with the paddle untouched: the default rally should miss.
+   Move to intercept the ball and check CPU rebounds.
+5. In Pacman, check held-direction movement, stopping on release and wall
+   blocking. Collect the large pellet to teleport the ghost; collect all food
+   for victory. Verify that life loss preserves food progress.
+6. Check the VGA lives bar, seven-segment horizontal bars, end-state colors and
+   restart behavior. Release A/Start or DIP 2 between presses.
 
-For a custom three-button INPUT PMOD PCB, connect normally-open switches from
-3.3 V to PMOD signal pins 1/2/3 (ui[0]/ui[1]/ui[2]), each with a 10 kohm pull-down
-to GND. Share ground with the demoboard. Keep DIP 0/1/2 OFF when using buttons.
-Keep DIP 4/5/6 OFF when the gamepad is connected. Manual-input mode prevents
-the management microcontroller from driving these inputs.
+For a custom three-button INPUT PCB, connect normally-open switches from 3.3 V
+to PMOD signal pins 1/2/3 (ui[0]/ui[1]/ui[2]), each with a 10 kohm pull-down to
+GND. Share ground and keep DIP 0/1/2 OFF when using these buttons. Three buttons
+cover paddle movement and launch; full four-direction Pacman control requires
+the gamepad interface.
 
-RTL unit tests cover input conditioning, directed game states, frame input capture,
-pausing and reset during an update. Reference simulations compare all three games
-with behavioral reference engines over 10,000 frames each; the Pong reference
-includes coarse CPU tracking. References use rendering-pixel coordinates with
-the new movement rates; directed tests cover all 16 brick cells, all eight CPU
-columns, and the alternate-frame movement cadence. The external
-pin tests cover sync boundaries, blanking, initial colors, paddle movement and
-launch. Additional cases select Pong and Pacman through reset pins, send serial
-gamepad reports, check player/CPU paddles and ball motion, identify both maze
-characters, exercise Up/Down and a blocking wall, and switch games via reset.
-They verify that controller 2 is ignored, opposing directions stop the paddle,
-and the disconnected-controller marker releases buttons. All three cases run
-on RTL or the gate-level netlist using only package pins.
+### Automated verification
+
+`make test` runs the input/gameplay unit tests, 10,000 reference frames for each
+game, directed pellet/teleport tests and four external-pin video tests. Run
+`python3 test/test_board_controls.py` separately for the nine helper tests.
+
+| External-pin test | Coverage |
+| --- | --- |
+| Breakout/video | Every raster line's sync boundaries and blanking, initial image, directional controls and launch |
+| Pong | Controller ordering, paddle movement, opposing directions, disconnect release, CPU tracking, visible moving ball and reset-only selection |
+| Pacman movement/walls | Player/ghost movement, stop on release, Up/Down, return to the top wall, continued blocking and reset into Pong |
+| Pacman pellets | Sparse food map, large pellet, collection, retained unvisited food, lives and red ghost after teleport |
+
+All current RTL tests pass. Video samples are grouped in raster order and
+unnecessary frame waits removed; the tests still use only package pins.
+The latest four video tests ran in separate simulator processes with independent
+build/result paths. They can also run against a matching gate-level netlist,
+but the current revision still needs that verification after hardening.
+Detailed fast tests cover all 16 brick cells, all 64 CPU impact positions,
+the stationary-paddle Pong regression, teleport/contact priority, pause,
+restart and collection of the final pellet. They complement the video checks;
+they do not replace gate-level or physical verification.
 
 ## External hardware
 
 - Tiny VGA RGB222 PMOD and VGA monitor.
-- Optional Psychogenic SNES-compatible Gamepad PMOD and controller.
-- Alternatively, three active-high buttons on INPUT, or the built-in DIP switches.
-- ETR/FabricFox FPGA breakout for FPGA testing, or a matching Tiny Tapeout ASIC.
-
-
-The on-screen lives display is a contiguous white bar at logical (32,12),
-four pixels high. Its width is eight pixels per remaining life (8/16/24 for
-1/2/3 lives), with no bar at zero. All three games use the same position;
-the seven-segment horizontal-bar display is unchanged.
+- Optional Psychogenic SNES-compatible Gamepad PMOD and controller in connector 1.
+- Alternatively, three active-high buttons or built-in DIPs for paddle controls.
+- ETR/FabricFox FPGA ASIC simulator, or a matching Tiny Tapeout ASIC after fabrication.

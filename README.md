@@ -1,43 +1,33 @@
 # Tiny Arcade: Breakout, Pong & Pacman
 
-Three games in Verilog for the **Tiny Tapeout ETR/FabricFox FPGA kit**, targeting
-**SKY 26d / SKY130, one tile**. Shared video and game logic generate 640×480 VGA
-at 60 Hz with RGB222 (64 colors), without a framebuffer. The onboard 7-segment
-display shows lives as horizontal bars: bottom for one, bottom + middle for two,
-and all three for three; zero is blank. On VGA, lives appear as a white bar
-that shortens as lives are lost.
+Three Verilog games targeting **Tiny Tapeout SKY 26d / SKY130, one tile**, tested
+on the **ETR demo board with the FabricFox FPGA ASIC simulator**. Shared logic
+produces 640×480 VGA at 60 Hz with RGB222 (64 available colors), without a
+framebuffer. A white on-screen bar and the onboard seven-segment display show
+remaining lives.
 
 | Breakout | Pong | Pacman-style maze |
 | :---: | :---: | :---: |
 | ![Breakout with 16 bricks](docs/preview.png) | ![Pong with player and CPU paddles](docs/pong.png) | ![Pacman maze with player and ghost](docs/pacman.png) |
 
-*Simulated VGA screenshots; the maze image predates the collectible-pellet updates.*
+*Earlier simulated screenshots illustrate the games; pellet and lives graphics
+have since changed. The gameplay below describes the current version.*
 
 ## Connect and play
 
-- The connected ETR board now has a persistent **BOOT-button launcher**: normal
-  power-up still loads the factory test; pressing BOOT loads and starts the
-  selected arcade game. Later presses act as launch/restart. Keep DIP **2 OFF**
-  when using BOOT. After game over, press once to restart and again to launch.
-  Game selection still uses DIP 3/7 as below. This is board firmware support,
-  not a change to the arcade RTL or ASIC.
-- **Gamepad selection on the ETR board:** keep DIP **3 and 7 OFF**, then press
-  **Select+B** for Breakout, **Select+Y** for Pong, or **Select+A** for Pacman.
-  The board resets the chosen game. Breakout waits for A/Start or BOOT to serve;
-  Pong and Pacman launch automatically. Release the
-  shortcut before selecting again. A shortcut can also load the arcade directly
-  from the factory test. Use the working gamepad; ordinary A/Start still launches.
-- **Live DIP selection on the ETR board:** once the arcade is loaded, changing
-  DIP 3/7 to a valid setting for 0.5 seconds selects and resets that
-  game. OFF/ON is reserved and ignored. Unchanged DIPs do not override gamepad
-  selection. Gamepad selection is rejected until both selection DIPs are OFF.
-- **BIDIR:** Tiny VGA PMOD and monitor.
-- **INPUT:** optional Psychogenic Gamepad PMOD (controller 1), or use DIP switches.
-- Use **ASIC_MANUAL_INPUTS** mode and a **25.2 MHz** clock; the FPGA loader sets both.
-- With a gamepad connected, leave DIP **4/5/6 OFF** (latch/clock/data).
+- Connect the **Tiny VGA PMOD to BIDIR** and a VGA monitor.
+- Connect the optional **Psychogenic Gamepad PMOD to INPUT**, using controller
+  connector **1**. Leave DIP **4/5/6 OFF** when it is connected.
+- The FPGA loader selects manual-input mode and a **25.2 MHz** clock.
+- With the installed demo-board helper, leave DIP **3/7 OFF** and use
+  **Select+B = Breakout**, **Select+Y = Pong**, **Select+A = Pacman**.
+  Release the shortcut before selecting again.
+- Selecting **Breakout waits for A, Start or BOOT to serve**. Pong and Pacman
+  auto-launch. Selection resets the chosen game and restores three lives.
+- Changing DIP 3/7 to a valid setting for 0.5 seconds also selects the game.
+  Without the helper, set the DIPs and press reset; then launch manually.
 
-Without the demo-board helper, select the game, then **reset**. Switch labels
-are zero-based; this original hardware interface remains unchanged:
+Switch labels are zero-based:
 
 | Game | DIP 3 | DIP 7 |
 | --- | --- | --- |
@@ -45,22 +35,33 @@ are zero-based; this original hardware interface remains unchanged:
 | Pong | ON | OFF |
 | Pacman | ON | ON |
 
-| Action | DIP | Gamepad |
+| Action | DIP / custom button | Controller 1 |
 | --- | --- | --- |
 | Left / right | 0 / 1 | D-pad left / right |
 | Launch / restart | 2, OFF → ON | A or Start |
 | Pacman up / down | — | D-pad up / down |
 
-Pacman moves while a direction is held and stops on release; turns occur at
-maze-cell boundaries. Pacman moves twice as fast as the ghost. The ghost keeps moving when the player stops. Eat all **16 yellow pellets** to
-win; losing a life preserves collected pellets. Pacman is a solid yellow square.
-One larger yellow pellet at column 1, row 7 immediately sends the ghost back
-to its starting position. The ghost stays red and resumes chasing; pickup
-protects against contact in that update only. Restarting refills all pellets.
+The installed **BOOT helper** can load and start the arcade from the factory
+test; later BOOT presses act as launch/restart. Keep DIP 2 OFF when using it.
+After a lost life, launch again. After game over or victory, press once to reset
+the game, release, then press again to launch.
 
-One controller is enough. Release launch before pressing again; after game over,
-press once to restart and again to launch. See [wiring and gameplay](docs/info.md)
-for custom three-button boards and protocol details.
+## The games
+
+- **Breakout:** clear the 8×2 brick field. Move the paddle while holding a
+  direction; holding both stops it. The impact half determines horizontal bounce.
+- **Pong:** face a CPU paddle that follows the ball in coarse columns. Its
+  rebound rule varies with impact position and column, breaking the old default
+  repeating rally. Missing either paddle costs a life.
+- **Pacman:** move while a direction is held; turns occur at maze-cell boundaries.
+  Pacman moves twice as fast as the chasing ghost. Eat all **16 pellets** to win.
+  The one large pellet immediately teleports the ghost to its starting position.
+  It stays red and resumes chasing; there is no timed immunity. Pickup protects
+  against contact in that update only. Losing a life preserves collected food.
+
+All games start with three lives. On the seven-segment display, one life lights
+only the bottom bar, two light bottom + middle, and three light all horizontal
+bars. Zero is blank. See [gameplay, wiring and implementation](docs/info.md).
 
 ## Build and test
 
@@ -71,43 +72,34 @@ Run from this repository:
 pip install -r test/requirements.txt
 pip install mpremote
 make                             # FPGA bitstream
-make test                        # All games, gamepad and VGA tests
-make upload PORT=/dev/ttyACM0      # ETR/FabricFox with Tiny Tapeout SDK
+make test                        # Unit/reference/pellet and four VGA tests
+python3 test/test_board_controls.py  # Nine demo-board helper tests
+make upload PORT=/dev/ttyACM0      # FPGA upload with Tiny Tapeout SDK
 ```
 
-BOOT support is in `scripts/arcade_boot.py`, installed on the board as
-`/arcade_boot.py`; `scripts/run_game.py` is installed as `/arcade_run.py`.
-`scripts/arcade_gamepad.py` is installed as `/arcade_gamepad.py` and passively
-captures PMOD reports using PIO1 state machine 6. The selector briefly releases
-the mode pins to read physical DIPs; the arcade only samples these pins during
-reset. Software asserts only HIGH levels and otherwise releases the pins to
-inputs, avoiding an active LOW drive against an ON DIP. Mode changes briefly
-reset VGA as well as gameplay and restore three lives before launching.
-The existing board `/main.py` has an appended `arcade_boot.install(tt)` hook.
-The original startup/configuration and bitstream were backed up locally in
-`build/board-backup-20261001/`. Restoring that backup of `main.py` and restarting
-the board removes automatic BOOT support. The board's `config.ini` was unchanged.
-On-board checks verified loading, the exact 25.2 MHz clock, launch-input release,
-gameplay consuming a life, and the launcher remaining armed after restart.
-The selector upgrade passed seven host tests; on-board checks confirmed mode
-pin levels, reset/launch and input release. A physical Select+Y press switched
-Pacman to Pong, confirmed both on the monitor and in controller status. The
-selector upgrade did not change the arcade RTL. The loader also accepts an ASIC shuttle index
-containing `tt_um_breakout`; that future-silicon path has not yet been tested.
+The persistent selector uses `scripts/arcade_boot.py` and
+`scripts/arcade_gamepad.py`; see [helper installation and behavior](docs/info.md#demo-board-helper).
 
-## ASIC hardening
+## Implementation status
 
-**The earlier revision successfully hardened in a 1×1 SKY130 tile.** [Run 36261694960](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960)
-completed on 26 September 2026 for commit `299f5d5`: routing, DRC, LVS, antenna,
-setup/hold checks, Tiny Tapeout precheck and the gate-level test passed.
-Nonfatal maximum-slew warnings remain; see the [hardening notes](docs/development.md#verified-hardening-result).
+| Current combined design | Result |
+| --- | ---: |
+| Local SKY130 synthesis cell area | **9,424.04 µm²** |
+| Flip-flops | **147** |
+| FabricFox FPGA logic cells | **827 / 5,280** |
+| FPGA timing | **30.95 MHz**, passing 25.2 MHz |
+| Current RTL tests | Unit/reference/pellet tests and all four external-pin video tests pass |
+| Demo-board helper tests | 9 pass |
 
-The current held-direction and collectible-pellet Pacman changes need a new hardening run; the artifact
-and gate-level results below describe the earlier movement behavior.
+**The current version needs a new ASIC hardening run.** Local synthesis area
+and FPGA success do not establish physical one-tile fit.
 
-Download [tt_submission](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960/artifacts/10912098425)
-from that run for the ASIC files. Pushing changes runs the SKY 26d workflows again.
+An earlier revision, commit `299f5d5`, successfully hardened in a 1×1 SKY130 tile
+on 26 September 2026: [run 36261694960](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960).
+Routing, DRC, LVS, antenna, setup/hold checks, Tiny Tapeout precheck and functional
+gate-level tests passed, with nonfatal maximum-slew warnings remaining.
+Its [tt_submission artifact](https://github.com/calincalin644/3-in-1arcade/actions/runs/36261694960/artifacts/10912098425)
+contains that earlier design, not today's gameplay updates.
 
-All three games have passed external-pin gate-level tests; see
-[verification coverage](docs/gate-level-verification.md).
-See [design and area experiments](docs/development.md) for implementation details.
+Pushing changes starts the SKY 26d workflows. See [verification scope](docs/gate-level-verification.md)
+and [development and area history](docs/development.md).
