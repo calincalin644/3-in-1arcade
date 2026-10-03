@@ -3,19 +3,22 @@
 ## Current RTL and FPGA version
 
 The current gameplay includes held-direction Pacman, 16 collectible pellets,
-one ghost-teleport pellet, the revised Pong rebound rule, and left/right inputs
+two cyan ghost-teleport pellets, the revised Pong rebound rule, and left/right inputs
 without debounce (their synchronizers remain). The board selector leaves
-Breakout waiting for an explicit serve.
+all three games waiting for an explicit launch. The updated helper passes
+12 host tests, including releasing the selection chord before resetting.
 
-Current unit/reference/pellet tests, all four external-pin RTL tests and all nine
-board-helper tests pass. The FPGA build meets 25.2 MHz. The faster video tests
+Current unit/reference/pellet tests pass. All four external-pin RTL tests and
+all nine board-helper tests passed before adding the second teleport pellet.
+That addition has directed tests and a fresh VGA capture; an external-pin
+rerun is pending. The FPGA build meets 25.2 MHz. The faster video tests
 use raster-ordered sampling and shorter control journeys; their latest local
 runtimes were 116 s (Breakout), 176 s (Pong), 258 s (Pacman movement/walls),
 and 215 s (Pacman pellets), run concurrently. Logs and result XML are in the
 local `build/faster-tests/` directory.
 
 **The current revision has not been verified against a newly hardened routed
-netlist.** Local synthesis is 9,474.0864 µm² with 147 FFs; physical one-tile fit,
+netlist.** Local synthesis is 9,419.0336 µm² with 147 FFs; physical one-tile fit,
 post-route checks and gate-level simulation require a fresh hardening run.
 The historical results below do not establish those properties for this RTL.
 

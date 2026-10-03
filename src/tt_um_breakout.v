@@ -16,7 +16,7 @@ module tt_um_breakout (
     breakout_video timing(clk, rst_n, h, v, active, hs, vs, frame);
 
     wire left, right, launch, up, down;
-    breakout_controls controls(clk, rst_n, frame, ui_in, left, right, launch, up, down);
+    breakout_controls controls(clk, rst_n, frame, ui_in, left, right, launch, up, down, pacman_mode);
 
     // ui_in[3] and ui_in[7] select the game. The gamepad occupies ui_in[4:6],
     // so the selector is sampled while reset is asserted and held during play.
@@ -96,7 +96,8 @@ endmodule
 module breakout_controls (
     input wire clk, rst_n, frame,
     input wire [7:0] ui,
-    output wire left, right, launch, up, down
+    output wire left, right, launch, up, down,
+    input wire pacman_mode
 );
     reg [5:0] sync1, sync2;
     wire [5:0] raw = {ui[6:4], ui[2:0]};
@@ -138,10 +139,13 @@ module breakout_controls (
             end
         end
     end
-    assign left = sync2[0] | pad[0];
-    assign right = sync2[1] | pad[1];
-    assign up = pad[4];
-    assign down = pad[3];
+    // DIP 2 selects the vertical axis in Pacman; gamepad directions are unchanged.
+    // Reuse the launch synchronizer and latched game mode: no extra state.
+    wire vertical = pacman_mode && sync2[2];
+    assign left = vertical ? pad[0] : (pad[0] | sync2[0]);
+    assign right = vertical ? pad[1] : (pad[1] | sync2[1]);
+    assign up = vertical ? (pad[4] | sync2[0]) : pad[4];
+    assign down = vertical ? (pad[3] | sync2[1]) : pad[3];
     // Sampled by the game at frame; held launch never auto-launches another life.
     assign launch = fire && !launch_previous;
 endmodule
@@ -290,8 +294,9 @@ module arcade_engine (
         x[3:2] == 2'b01;
     wire [3:0] pellet_index = {y[4:3],x[5:4]};
     wire pellet_clear = pacman_mode && phase == IDLE && frame && state == PLAY && pellet_cell;
-    // One large pellet: column 1, row 7 (index 12).
-    wire power_eaten = pellet_clear && bricks[12] && pellet_index == 4'd12;
+    // Large teleport pellets: lower-left (index 12), upper-right (index 3).
+    wire power_eaten = pellet_clear &&
+        ((bricks[12] && pellet_index == 4'd12) || (bricks[3] && pellet_index == 4'd3));
     wire ghost_contact = x[5:2] == a[5:2] && y[5:2] == b[5:2];
     wire [3:0] clear_index = pacman_mode ? pellet_index : brick_probe[3:0];
     wire brick_clear = phase == BALL_Y && alu_ready && !pong_mode && brick_probe[5] &&
@@ -458,7 +463,7 @@ module pacman_renderer (
     wire pellet_cell = !row[3] && row[0] &&
         col[1:0] == 2'b01;
     wire [3:0] pellet_index = {row[2:1],col[3:2]};
-    wire power_pellet = pellet_index == 4'd12;
+    wire power_pellet = pellet_index == 4'd12 || pellet_index == 4'd3;
     wire small_dot = x[3:0] >= 7 && x[3:0] <= 8 && y[3:0] >= 7 && y[3:0] <= 8;
     wire large_dot = x[3:0] >= 5 && x[3:0] <= 10 && y[3:0] >= 5 && y[3:0] <= 10;
     wire pellet = in_maze && pellet_cell && pellets[pellet_index] &&
@@ -483,7 +488,7 @@ module pacman_renderer (
             if (in_maze) begin
                 if (wall)
                     rgb = 6'b00_00_11;
-                else if (pellet) rgb = 6'b11_11_00;
+                else if (pellet) rgb = power_pellet ? 6'b00_11_11 : 6'b11_11_00;
             end
             if (ghost_shape) rgb = 6'b11_00_00;
             if (pac_shape) rgb = 6'b11_11_00;

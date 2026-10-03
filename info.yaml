@@ -10,9 +10,9 @@ project:
   source_files:
     - "tt_um_breakout.v"
 pinout:
-  ui[0]: "Left button (active high)"
-  ui[1]: "Right button (active high)"
-  ui[2]: "Launch/restart button (active high)"
+  ui[0]: "Left / Pacman up while ui[2] high (active high)"
+  ui[1]: "Right / Pacman down while ui[2] high (active high)"
+  ui[2]: "Launch/restart; Pacman vertical-axis modifier (active high)"
   ui[3]: "Game select bit 0: 0 Breakout, 1 Pong/Pacman (sampled during reset)"
   ui[4]: "Gamepad latch"
   ui[5]: "Gamepad serial clock"

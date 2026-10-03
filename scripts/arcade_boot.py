@@ -31,6 +31,7 @@ class BootArcade:
         self.loader_globals = None
         self.mode_override = None
         self.last_shortcut = None
+        self.pending_mode = None
         self.pad_buttons = 0
         self.pad_seen_at = time.ticks_ms()
         self.reader = GamepadReader(board)
@@ -108,9 +109,7 @@ class BootArcade:
         finally:
             self.board.reset_project(False)
         time.sleep_ms(100)
-        # Leave the complete brick field visible until an explicit serve.
-        if mode != 0:
-            self.launch()
+        # All games remain in SERVE until a separate launch input.
         self.switches += 1
         print('Arcade selection:', MODES[mode], 'via', source)
         return True
@@ -122,7 +121,13 @@ class BootArcade:
         previous = self.last_shortcut
         self.last_shortcut = requested
         if requested is not None and requested != previous:
-            self.select_game(requested, 'gamepad')
+            self.pending_mode = requested
+        # Select+A contains the ASIC launch button: reset only after release,
+        # so the selection chord cannot also start the newly selected game.
+        if bits == 0 and self.pending_mode is not None:
+            mode = self.pending_mode
+            self.pending_mode = None
+            self.select_game(mode, 'gamepad')
 
     def handle_dips(self, value, now):
         if value != self.dip_candidate:
@@ -134,7 +139,11 @@ class BootArcade:
                 self.select_game(value, 'dip')
 
     def press(self):
+        was_arcade = self.is_arcade()
         self.ensure_loaded()
+        if not was_arcade:
+            print('Arcade loaded: press A, Start or BOOT to start.')
+            return
         self.launch()
         self.presses += 1
         print('Arcade BOOT: launch', self.presses)
@@ -157,6 +166,7 @@ class BootArcade:
                     self.handle_pad(bits)
             if time.ticks_diff(now, self.pad_seen_at) > 2200:
                 self.last_shortcut = None
+                self.pending_mode = None
             sample = int(bool(self.read_button()))
             if sample == self.previous_sample and sample != self.stable_button:
                 self.stable_button = sample

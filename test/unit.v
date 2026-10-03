@@ -4,8 +4,9 @@ module unit;
     always #5 clk=~clk;
     reg rst_n=0, frame=0, ena=1;
     reg [7:0] ui=0;
+    reg control_pacman=0;
     wire left, right, launch, up, down;
-    breakout_controls controls(clk,rst_n,frame,ui,left,right,launch,up,down);
+    breakout_controls controls(clk,rst_n,frame,ui,left,right,launch,up,down,control_pacman);
     reg gl=0, gr=0, gf=0;
     wire [5:0] paddle,bx,by;
     wire [15:0] bank;
@@ -97,6 +98,25 @@ module unit;
         if(!launch) $fatal(1,"Launch edge missing");
         tick;
         if(launch) $fatal(1,"Held launch repeats");
+        ui[2:0]=0; clocks(4); tick; tick; tick;
+        // DIP-only Pacman: DIP 2 remaps 0/1 to up/down, without new state.
+        control_pacman=1;
+        for(i=0;i<8;i=i+1) begin
+            ui[2:0]=i; clocks(4);
+            if(left !== (ui[0] && !ui[2]) || right !== (ui[1] && !ui[2]) ||
+               up !== (ui[0] && ui[2]) || down !== (ui[1] && ui[2]))
+                $fatal(1,"Pacman DIP mapping %0d",i);
+        end
+        // A held modifier must not remap the independent gamepad directions.
+        ui[2:0]=4; clocks(4);
+        packet(24'h000020);
+        if(!left || right || up || down) $fatal(1,"Modifier changed gamepad left");
+        packet(24'h000040);
+        if(left || right || up || !down) $fatal(1,"Modifier changed gamepad down");
+        packet(24'hffffff);
+        control_pacman=0;
+        ui[2:0]=7; clocks(4);
+        if(!left || !right || up || down) $fatal(1,"Other games remapped by launch");
         ui[2:0]=0; clocks(4); tick; tick; tick;
         // Controller 2 must not affect controller 1. 0x020=left, 0x010=right.
         packet(24'h020000);
@@ -288,6 +308,21 @@ module unit;
             if(pac.phase!==0 || pacx!==4 || pacy!==4 || ghostx!==56 || ghosty!==40 || paclives!==3)
                 $fatal(1,"Reset failed to abort update at offset %0d",i);
         end
+        // Integrated DIP-only maze control through synchronizers and engine.
+        top_ui=8'h88; reset;
+        top_ui=8'h8c; clocks(4); repeat(3) top_tick;
+        if(top_dut.state!==1) $fatal(1,"DIP-only Pacman did not start");
+        top_ui=8'h8e; clocks(4); repeat(8) top_tick;
+        if(top_dut.grid_y<=4) $fatal(1,"DIP-only down did not move Pacman");
+        my=top_dut.grid_y;
+        top_ui=8'h8c; clocks(4); repeat(3) top_tick;
+        if(top_dut.grid_y!==my) $fatal(1,"DIP-only release did not stop Pacman");
+        top_ui=8'h8d; clocks(4); repeat(16) top_tick;
+        if(top_dut.grid_y!==4) $fatal(1,"DIP-only up failed to reach top wall");
+        top_ui=8'h8a; clocks(4); repeat(4) top_tick;
+        if(top_dut.grid_x<=4) $fatal(1,"DIP-only right did not move Pacman");
+        top_ui=8'h89; clocks(4); repeat(8) top_tick;
+        if(top_dut.grid_x!==4) $fatal(1,"DIP-only left failed to reach left wall");
         top_ui=8'h88; reset;
         if({top_dut.pacman_mode,top_dut.pong_mode}!==2'b10) $fatal(1,"Pacman selector");
         top_ui=8'h08; reset;

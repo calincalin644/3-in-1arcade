@@ -66,27 +66,58 @@ class ControlsTest(unittest.TestCase):
             self.assertEqual(self.board.captured_mode,mode)
             self.assertEqual(self.board.resets[-2:],[True,False])
             self.assertEqual(self.ctl.read_dips(),0)
-            self.assertEqual(self.ctl.pulsing, mode != 0)
+            self.assertFalse(self.ctl.pulsing)
             advance(141);self.ctl.poll(None)
             self.assertEqual(self.board.pins.ui_in2.raw_pin.mode,Pin.IN)
-    def test_breakout_waits_then_boot_launches(self):
-        self.ctl.select_game(0)
+    def test_all_games_wait_then_boot_launches(self):
+        for mode in (0, 1, 3):
+            self.ctl.select_game(mode)
+            self.assertFalse(self.ctl.pulsing)
+            self.assertEqual(self.board.pins.ui_in2.raw_pin.mode,Pin.IN)
+            self.ctl.press()
+            self.assertTrue(self.ctl.pulsing)
+    def test_all_dip_selections_wait(self):
+        for mode in (0, 1, 3):
+            self.board.pins.ui_in3.raw_pin.external=mode & 1
+            self.board.pins.ui_in7.raw_pin.external=(mode >> 1) & 1
+            self.assertTrue(self.ctl.select_game(mode,'dip'))
+            self.assertFalse(self.ctl.pulsing)
+    def test_first_boot_loads_without_launch(self):
+        self.board.shuttle.enabled.name='factory_test'
+        def load(): self.board.shuttle.enabled.name='tt_um_breakout'
+        self.ctl.ensure_loaded=load
+        self.ctl.press()
+        self.assertTrue(self.ctl.is_arcade())
         self.assertFalse(self.ctl.pulsing)
-        self.assertEqual(self.board.pins.ui_in2.raw_pin.mode,Pin.IN)
         self.ctl.press()
         self.assertTrue(self.ctl.pulsing)
-    def test_dip_breakout_waits(self):
-        self.ctl.select_game(0,'dip')
-        self.assertFalse(self.ctl.pulsing)
     def test_active_dip_blocks_gamepad(self):
         self.board.pins.ui_in7.raw_pin.external=1
         self.assertFalse(self.ctl.select_game(0))
         self.assertEqual(self.board.resets,[])
-    def test_held_chord_only_switches_once(self):
-        self.ctl.handle_pad(0x600);self.ctl.handle_pad(0x600)
-        self.assertEqual(self.ctl.switches,1)
-        self.ctl.handle_pad(0);self.ctl.handle_pad(0x600)
-        self.assertEqual(self.ctl.switches,2)
+    def test_held_chords_wait_for_release(self):
+        for bits, mode in ((0xa00,0),(0x600,1),(0x208,3)):
+            before=self.ctl.switches
+            self.ctl.handle_pad(bits);self.ctl.handle_pad(bits)
+            self.assertEqual(self.ctl.switches,before)
+            self.ctl.handle_pad(0)
+            self.assertEqual(self.ctl.switches,before+1)
+            self.assertEqual(self.board.captured_mode,mode)
+            self.assertFalse(self.ctl.pulsing)
+            self.ctl.handle_pad(0)
+            self.assertEqual(self.ctl.switches,before+1)
+    def test_partial_release_does_not_select(self):
+        self.ctl.handle_pad(0x208)
+        self.ctl.handle_pad(0x008)
+        self.assertEqual(self.ctl.switches,0)
+        self.ctl.handle_pad(0)
+        self.assertEqual(self.board.captured_mode,3)
+        self.assertFalse(self.ctl.pulsing)
+    def test_stale_shortcut_cancelled(self):
+        self.ctl.handle_pad(0x208)
+        advance(2201);self.ctl.poll(None)
+        self.ctl.handle_pad(0)
+        self.assertEqual(self.ctl.switches,0)
     def test_stable_dip_switch(self):
         self.board.pins.ui_in3.raw_pin.external=1
         self.ctl.handle_dips(1,0);self.ctl.handle_dips(1,499)

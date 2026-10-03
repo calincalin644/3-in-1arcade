@@ -42,15 +42,16 @@ player stops and chooses legal directions toward the player. It avoids immediate
 reversal when another opening exists, but can reverse at a dead end. This is a
 local chase heuristic, not complete maze pathfinding.
 
-Eat all **16 yellow pellets** to win. They occupy maze columns 1, 5, 9, 13 and
-rows 1, 3, 5, 7 (zero-based). The pellet at column 1, row 7 is larger: collecting
-it immediately teleports the ghost to its initial cell, column 14, row 10,
+Eat all **16 pellets** to win: fourteen yellow food dots and two cyan teleport pellets. They occupy maze columns 1, 5, 9, 13 and
+rows 1, 3, 5, 7 (zero-based). The two cyan pellets are larger: lower-left at column 1,
+row 7, and upper-right at column 13, row 1. Collecting either immediately
+teleports the ghost to its initial cell, column 14, row 10,
 facing left. The ghost remains red and resumes chasing on subsequent updates.
 Pickup takes priority over contact in the same update; there is no lasting
 immunity, vulnerability timer, fleeing mode or edible ghost.
 
-The other fifteen pellets are ordinary food. Losing a life preserves collected
-pellets, including the teleport pellet; restarting after victory or game over
+The other fourteen pellets are ordinary food. Losing a life preserves collected
+pellets, including either teleport pellet; restarting after victory or game over
 restores all sixteen. Pacman is a solid yellow square with no mouth animation.
 There is no separate score counter.
 
@@ -107,10 +108,10 @@ Mode selection is held until reset.
 
 | Combined resource measurement | Current value |
 | --- | ---: |
-| Local SKY130 synthesis cell area | 9,474.0864 µm² |
+| Local SKY130 synthesis cell area | 9,419.0336 µm² |
 | Flip-flops | 147 |
-| FabricFox packed logic cells | 828 / 5,280 |
-| FPGA final timing estimate | 33.03 MHz (25.2 MHz target passes) |
+| FabricFox packed logic cells | 827 / 5,280 |
+| FPGA final timing estimate | 31.73 MHz (25.2 MHz target passes) |
 
 These are local synthesis and FPGA results, not current routed ASIC occupancy.
 The previously hardened revision and its remaining warnings are described in
@@ -127,8 +128,14 @@ The loader selects `ASIC_MANUAL_INPUTS` and leaves the RP2350 BIDIR pins as inpu
 | --- | --- | --- |
 | Left | ui[0], switch 0 | D-pad Left |
 | Right | ui[1], switch 1 | D-pad Right |
-| Pacman up/down | — | D-pad Up / Down |
+| Pacman up/down | Hold switch 2: switch 0 = up, switch 1 = down | D-pad Up / Down |
 | Launch/restart | ui[2], switch 2 OFF → ON | A or Start |
+
+In Pacman, switch 2 selects the DIP movement axis: OFF gives left/right, ON
+gives up/down. Release switches 0/1 before changing axis; both OFF stops the
+player. Switch 2 still launches on a rising input, which is ignored during
+normal play. Gamepad directions and the other games are unchanged. No additional
+flip-flops are needed: the modifier uses the existing synchronizer and mode.
 
 Switch numbers are zero-based. Left/right buttons retain two-stage synchronizers
 but have no debounce; gameplay samples their levels at frame updates. The
@@ -158,13 +165,15 @@ synchronizers.
 The helper provides game selection without pressing physical reset:
 
 - Keep DIP 3/7 OFF; press Select+B for Breakout, Select+Y for Pong or Select+A
-  for Pacman. Release the shortcut before selecting again.
+  for Pacman. Selection takes effect after all buttons are released, so
+  Select+A cannot also start Pacman.
 - Once the arcade is loaded, a valid DIP 3/7 change stable for 0.5 seconds also
   selects a game. The helper ignores the reserved setting. Unchanged DIPs do
   not override a gamepad selection.
-- Selection resets the game and restores three lives. Breakout waits for an
-  explicit serve; Pong and Pacman auto-launch. VGA also resets briefly.
-- From the board's factory test, BOOT loads and starts the selected arcade game;
+- Selection resets the game and restores three lives. All games wait for a
+  separate A, Start or BOOT press. VGA also resets briefly. Keep DIP 2 OFF
+  until ready to start; its OFF-to-ON transition can also launch.
+- From the board's factory test, BOOT loads the arcade and leaves it waiting;
   subsequent BOOT presses act as launch/restart. Keep DIP 2 OFF when using BOOT.
 
 Install `scripts/arcade_boot.py` as `/arcade_boot.py`,
@@ -190,7 +199,7 @@ the manufactured ASIC has not yet been tested.
 4. In Pong, launch with the paddle untouched: the default rally should miss.
    Move to intercept the ball and check CPU rebounds.
 5. In Pacman, check held-direction movement, stopping on release and wall
-   blocking. Collect the large pellet to teleport the ghost; collect all food
+   blocking. Collect either large pellet to teleport the ghost; collect all food
    for victory. Verify that life loss preserves food progress.
 6. Check the VGA life squares, seven-segment horizontal bars, end-state colors and
    restart behavior. Release A/Start or DIP 2 between presses.
@@ -198,8 +207,8 @@ the manufactured ASIC has not yet been tested.
 For a custom three-button INPUT PCB, connect normally-open switches from 3.3 V
 to PMOD signal pins 1/2/3 (ui[0]/ui[1]/ui[2]), each with a 10 kohm pull-down to
 GND. Share ground and keep DIP 0/1/2 OFF when using these buttons. Three buttons
-cover paddle movement and launch; full four-direction Pacman control requires
-the gamepad interface.
+cover paddle movement and launch; in Pacman, hold the launch button while
+pressing left/right to move up/down. Release directions before changing axis.
 
 ### Automated verification
 
@@ -214,7 +223,9 @@ game, directed pellet/teleport tests and four external-pin video tests. Run
 | Pacman movement/walls | Player/ghost movement, stop on release, Up/Down, return to the top wall, continued blocking and reset into Pong |
 | Pacman pellets | Sparse food map, large pellet, collection, retained unvisited food, lives and red ghost after teleport |
 
-All current RTL tests pass. Video samples are grouped in raster order and
+Current unit/reference/pellet tests pass. All four external-pin tests passed
+before the second teleport pellet was added; that small change has directed
+coverage and a regenerated VGA screenshot, but its external-pin rerun is pending. Video samples are grouped in raster order and
 unnecessary frame waits removed; the tests still use only package pins.
 The latest four video tests ran in separate simulator processes with independent
 build/result paths. They can also run against a matching gate-level netlist,

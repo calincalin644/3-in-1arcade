@@ -929,3 +929,157 @@ sparse food layout, large teleport pellet, solid player and red ghost; Breakout
 shows all sixteen bricks before serve. README now labels these as current RTL
 captures. Source/image hashes and raw captures are in `build/screenshots/`.
 No RTL, gameplay, area or board bitstream changed.
+
+
+### Upper-right teleport pellet (2026-10-03)
+
+Converted existing food bit 3, at maze column 13/row 1, into a second large
+yellow teleport pellet. Bit 12 at column 1/row 7 retains the same behavior.
+Either clears independently and immediately returns the ghost to its starting
+position, with pickup taking priority over simultaneous contact. Total food
+remains sixteen: fourteen ordinary pellets and two teleport pellets. No new
+storage is required. Directed tests cover both pickups on both cadence phases,
+independent consumption, pause, contact priority and no retrigger. Unit tests
+and 10,000-frame comparisons for all games pass. Pacman's screenshot was
+regenerated from the current VGA output pins; both enlarged pellets checked.
+The external-pin pellet test includes the new pixel but has not been rerun yet.
+
+Local SKY130 synthesis: 9,486.5984 µm² and 147 FFs, +12.5120 µm² over the
+one-teleport life-squares version. FPGA uses 827 LCs and passes 25.2 MHz
+(final estimate 33.84 MHz). Built but not uploaded; the board still contains
+the previous single-teleport life-squares bitstream. No new hardening performed.
+Logs and previous RTL are retained in `build/two-teleports/`.
+
+The two-teleport bitstream was subsequently uploaded, hash-verified and
+started in Pacman at 25.2 MHz with the board selector restored. Both pellets
+remain yellow. SHA256:
+`2e4dd5092ae9b39b34ac5b23d9ab46a6e62e525b299bb5cc807885c0c8ae7eab`.
+
+
+### Teleport-pellet color synthesis comparison (2026-10-03)
+
+Compared eight fixed colors for the two large pellets; all ordinary food stays
+yellow. Used identical full-design local SKY130 HD synthesis with each variant
+changing only the pellet renderer's color assignment. No variant was adopted or
+uploaded; the working source and FPGA retain yellow teleport pellets.
+
+| Teleport color | Full design area (µm²) | Change from yellow (µm²) | FFs |
+| --- | ---: | ---: | ---: |
+| cyan | 9,404.0192 | -82.5792 | 147 |
+| red | 9,417.7824 | -68.8160 | 147 |
+| magenta | 9,427.7920 | -58.8064 | 147 |
+| white | 9,449.0624 | -37.5360 | 147 |
+| green | 9,457.8208 | -28.7776 | 147 |
+| yellow | 9,486.5984 | +0.0000 | 147 |
+| blue | 9,495.3568 | +8.7584 | 147 |
+| orange | 9,510.3712 | +23.7728 | 147 |
+
+Cyan is the smallest measured variant: 82.5792 µm² less than yellow (0.87%),
+with the same 147 FFs. Mapping changes across the full renderer/design explain
+why adding a distinct color can reduce area; this is not a universal cost per
+color. These are local synthesis results, not routed area or physical-fit proof.
+Sources, logs and machine-readable results are in `build/portal-colors/`.
+
+
+### Adopt cyan teleport pellets (2026-10-03)
+
+Both large teleport pellets are cyan; ordinary food remains yellow and the
+ghost remains red. Current RTL exactly matches the measured cyan variant:
+9,404.0192 µm², 147 FFs (82.5792 µm² below yellow). Directed pellet/renderer
+regression passes, including both enlarged cyan dots, ordinary food, pickup,
+teleport/contact priority and independent consumption. A new VGA screenshot
+was generated from output pins and its portal/food colors checked. External-pin
+cocotb expected colors were updated; that longer regression was not rerun.
+FPGA use is 824 LCs; final timing 32.22 MHz passes 25.2 MHz.
+
+Uploaded and hash-verified the bitstream, started Pacman at 25.2 MHz and
+restored the selector. Pico BIDIR drivers remain disabled. Bitstream SHA256:
+`d71d103a9464dbc274797c0ee7d37526c3c2c162d8f36bbc42fbea99fa52b457`.
+No fresh ASIC hardening has been performed.
+
+
+### Keep three lives after five-life experiment (2026-10-03)
+
+A temporary five-life implementation used a three-bit lives counter, five VGA
+squares and numeric seven-segment digits. It measured 9,517.8784 µm² and 148 FFs
+and passed directed/reference tests, but the user chose to retain three lives.
+Restored all six affected source/test files byte-for-byte from the prior
+three-life version; rebuilt the bitstream to avoid leaving a five-life upload
+artifact. The five-life build was never uploaded. Reset and restart retain
+three lives. Seven-segment output remains bottom for one, bottom+middle for
+two, all three horizontal bars for three, and blank for zero. Historical
+experiment logs are in `build/five-lives/`.
+
+
+### Correct stale bitstream after experiment rollback (2026-10-03)
+
+The first requested upload after reverting five lives exposed a stale FPGA
+artifact: board output was 0x6d (digit five). The restore used copy2, preserving
+an old source timestamp, so make had skipped rebuilding the newer five-life
+JSON/bitstream despite restored RTL. A forced `make -B all` rebuilt the actual
+three-life source. Its SHA256 exactly matches the earlier cyan three-life image:
+`d71d103a9464dbc274797c0ee7d37526c3c2c162d8f36bbc42fbea99fa52b457`.
+Uploaded and verified that corrected image, started Pacman at 25.2 MHz, and
+asserted the physical uo_out value is 0x49 (three horizontal bars). FPGA use is
+824 LCs with final timing 32.22 MHz. The five-life image was briefly loaded during
+this subsequent upload, then replaced. Force rebuilding after timestamp-preserving
+restores and verify observable board outputs, not just the transferred hash.
+
+### Wait for an explicit start in every game
+
+The demo-board helper no longer auto-launches Pong or Pacman after selection.
+All three games remain ready until A, Start, BOOT or a DIP 2 rising input.
+Gamepad shortcuts now apply after all buttons are released, preventing Select+A
+from also launching Pacman. The first BOOT press from the factory test loads
+the arcade without launching; a subsequent press starts play. Twelve host
+helper tests pass, including all modes, partial shortcut release, stale reports
+and the first-BOOT path. This is a board-script change: RTL, bitstream and ASIC
+area are unchanged.
+
+Installed the updated helper on the connected demo board and selected Pacman.
+Verified launch input low, no helper launch pulse, and three-life output 0x49.
+
+### DIP-only four-direction Pacman
+
+DIP 2 now selects the Pacman DIP axis: 0/1 are left/right with 2 low,
+up/down with 2 high. Its rising input still launches/restarts. Gamepad
+directions and Breakout/Pong controls are unchanged. Existing synchronizers
+and the reset-latched game mode are reused; no new state is introduced.
+Local SKY130 synthesis is 9,505.3664 µm² (+101.3472 µm², about 1.08%),
+with 147 FFs. FabricFox uses 829 LCs and meets 25.2 MHz at 31.92 MHz.
+Directed tests cover every DIP combination, gamepad independence, and integrated
+maze movement/stop/wall checks. Unit, 10,000-frame engine reference comparisons
+and pellet regressions pass. Fresh routed ASIC verification remains pending.
+A separate four-frame-per-game video diagnostic confirms one 8x8 white ball
+(64 pixels) per frame in Breakout/Pong, with position changes only in blanking.
+Ball movement remains 30 Hz; the DIP change does not alter rendering or cadence.
+
+Uploaded and hash-verified FPGA bitstream `9a89de6ac291cc5f6e8937c5d3fb2a71e433b0e111f3e0ad7b48dedb52f52673`. Pacman selected, no launch pulse, lives 0x49, clock 25.2 MHz.
+
+### Compact DIP decoder mapping
+
+Compared five whole-design SKY130 syntheses with identical recipes:
+
+| Decoder expression | Cell area (µm²) | FFs |
+| --- | ---: | ---: |
+| Original gated OR | 9,505.3664 | 147 |
+| Explicit per-direction conditional (adopted) | 9,419.0336 | 147 |
+| Vector conditional | 9,424.0384 | 147 |
+| Factored product terms | 9,635.4912 | 147 |
+| Ungated vertical DIP signals outside Pacman | 9,416.5312 | 147 |
+
+The adopted expression preserves every control output in every mode. The
+ungated variant was only 2.5024 µm² smaller but changed unused up/down outputs
+in paddle modes, so the exact-equivalent option was preferred. Area falls by
+86.3328 µm²; DIP-only control now costs 15.0144 µm² relative to the pre-feature
+9,404.0192 µm² design. These are whole-design mapping results, not an isolated
+measurement of decoder cell footprints. Final routed area remains unmeasured.
+
+Yosys sequential equivalence passes for the full design (775/775 checks) after
+mapping the maze ROM, and independently for the controls module (56/56).
+Unit tests, including integrated DIP-only maze movement, and the 10,000-frame
+reference comparison pass. FPGA build: 827 LCs, final timing 31.73 MHz at a
+25.2 MHz target. Existing board bitstream behavior is equivalent; this change
+has not been uploaded. Logs and experimental sources: build/dip-compact/.
+
+The compact-decoder bitstream was subsequently uploaded and SHA256-verified: `f7d70c18c3b7e8c69cb80d9ef2558855874e701d00ec1711c2225c0a7dd0edc1`. Pacman is selected with no launch pulse, three-life output 0x49, and a 25.2 MHz clock.

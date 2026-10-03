@@ -260,10 +260,11 @@ async def pacman_collectible_pellets(dut):
     await pins.reset(0x88)
     # Initial pellet checks in raster order: same samples, fewer frame wraps.
     assert await pins.pixel(234, 74) == (0, 0, 0)  # Ordinary pellet stays small.
+    assert await pins.pixel(490, 74) == (0, 3, 3)  # Upper-right teleport pellet.
     assert await pins.pixel(174, 78) == (0, 0, 0)  # No pellet at column 3, row 1.
     assert await pins.pixel(238, 78) == (3, 3, 0)  # Pellet at column 5, row 1.
     assert await pins.pixel(142, 206) == (0, 0, 0)  # Removed extra bank: column 2, row 5.
-    assert await pins.pixel(106, 266) == (3, 3, 0)  # Large pellet at local (5,5).
+    assert await pins.pixel(106, 266) == (0, 3, 3)  # Large pellet at local (5,5).
     await pins.packet(controller1=(1 << 8) | (1 << 6))  # Start + Down.
     # Pass through row 7 and leave it: Pacman's yellow square otherwise
     # covers the cleared pellet pixel and makes a disappearance check ambiguous.

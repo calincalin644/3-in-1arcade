@@ -36,16 +36,17 @@ module pellets;
         for(r=0;r<12;r=r+1) for(c=0;c<16;c=c+1) begin
             pixel_x=32+c*16+7; pixel_y=16+r*16+7; #1;
             if(r<8 && r%2==1 && c%4==1) begin
-                if(engine.maze_wall(c,r) || rgb!==6'b111100)
+                if(engine.maze_wall(c,r) ||
+                   rgb!==(((r==7 && c==1) || (r==1 && c==13)) ? 6'b001111 : 6'b111100))
                     $fatal(1,"Missing/inaccessible pellet at %0d,%0d",c,r);
-            end else if(rgb===6'b111100) $fatal(1,"Extra pellet at %0d,%0d",c,r);
+            end else if(rgb===6'b111100 || rgb===6'b001111) $fatal(1,"Extra pellet at %0d,%0d",c,r);
         end
-        // Only one dot extends to local pixel (5,5).
+        // Only the two teleport dots extend to local pixel (5,5).
         for(r=1;r<8;r=r+2) for(c=1;c<15;c=c+1) begin
             pixel_x=32+c*16+5; pixel_y=16+r*16+5; #1;
-            if(r==7 && c==1) begin
-                if(rgb!==6'b111100) $fatal(1,"Power pellet not enlarged");
-            end else if(rgb===6'b111100) $fatal(1,"Ordinary pellet enlarged");
+            if((r==7 && c==1) || (r==1 && c==13)) begin
+                if(rgb!==6'b001111) $fatal(1,"Teleport pellet not enlarged/cyan");
+            end else if(rgb===6'b111100 || rgb===6'b001111) $fatal(1,"Ordinary pellet enlarged");
         end
         // Player is a solid 8x8 square: no animated mouth cut-outs.
         for(r=4;r<12;r=r+1) for(c=36;c<44;c=c+1) begin
@@ -91,14 +92,14 @@ module pellets;
         if(remaining!==16'hffff || lives!==3 || state!==0) $fatal(1,"Game-over restart");
         // Both cadence phases: remote pickup teleports exactly once, even
         // without contact. Disable first to check pickup/teleport are paused.
-        for(i=0;i<2;i=i+1) begin
+        for(j=0;j<2;j=j+1) for(i=0;i<2;i=i+1) begin
             reset; launch=1; tick; launch=0;
-            engine.x=4; engine.y=28; engine.a=20; engine.b=4;
+            engine.x=j ? 52 : 4; engine.y=j ? 4 : 28; engine.a=20; engine.b=4;
             engine.motion_phase=i; ena=0; tick;
-            if(a!==20 || b!==4 || remaining[12]!==1)
+            if(a!==20 || b!==4 || remaining[j ? 3 : 12]!==1)
                 $fatal(1,"Disabled engine teleported ghost or collected pellet");
             ena=1; tick;
-            if(a!==56 || b!==40 || engine.ghost_dir!==1 || remaining[12]!==0 || lives!==3)
+            if(a!==56 || b!==40 || engine.ghost_dir!==1 || remaining[j ? 3 : 12]!==0 || lives!==3)
                 $fatal(1,"Remote pickup did not teleport ghost on phase %0d",i);
             pixel_x=101; pixel_y=5; #1;
             if(rgb!==6'b110000) $fatal(1,"Teleported ghost is not red");
@@ -119,6 +120,13 @@ module pellets;
         engine.x=8; engine.y=4; engine.a=8; engine.b=4; tick;
         if(lives!==2 || state!==0) $fatal(1,"Teleport left lasting immunity");
         if(remaining[12]!==0) $fatal(1,"Life loss restored teleport pellet");
+        // Each portal has its own food bit: collecting one leaves the other usable.
+        reset; launch=1; tick; launch=0;
+        engine.x=4; engine.y=28; engine.a=20; engine.b=4; tick;
+        if(remaining[12]!==0 || remaining[3]!==1) $fatal(1,"Portal bits alias");
+        engine.x=52; engine.y=4; engine.a=52; engine.b=4; tick;
+        if(remaining[3]!==0 || a!==56 || b!==40 || lives!==3)
+            $fatal(1,"Upper-right pickup/contact did not teleport");
         // An ordinary pellet does not teleport the ghost.
         reset; launch=1; tick; launch=0;
         engine.x=20; engine.y=4; engine.a=36; engine.b=4;

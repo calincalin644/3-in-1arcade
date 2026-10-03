@@ -127,7 +127,9 @@ module reference_pacman_game (
     localparam SERVE=2'd0, PLAY=2'd1;
     localparam STOP=3'd0, LEFT=3'd1, RIGHT=3'd2, UP=3'd3, DOWN=3'd4;
     wire [2:0] wanted = left ? LEFT : right ? RIGHT : up ? UP : down ? DOWN : STOP;
-    wire power_eaten = state == PLAY && cell_x == 1 && cell_y == 7 && pellets[12];
+    wire power_eaten = state == PLAY &&
+        ((cell_x == 1 && cell_y == 7 && pellets[12]) ||
+         (cell_x == 13 && cell_y == 1 && pellets[3]));
     reg motion_phase;
     always @(posedge clk) begin
         if (!rst_n) motion_phase <= 0;
