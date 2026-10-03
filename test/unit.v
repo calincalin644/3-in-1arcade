@@ -188,12 +188,13 @@ module unit;
         if(state!==0 || lives!==3 || bricks!==16'hffff) $fatal(1,"Win restart");
 
         reset; pf=1; tick; pf=0;
-        for(i=0;i<8;i=i+1) begin
-            @(negedge clk); pong_session.state=1; pong.x=i*8;
-            pong.y=6; pong.b=i*8; pong.direction=1; pong.motion_phase=0;
+        for(i=0;i<64;i=i+1) begin
+            @(negedge clk); pong_session.state=1; pong.x=i;
+            pong.y=6; pong.b=(i/8)*8; pong.direction=1; pong.motion_phase=0;
             tick;
-            if(cp!==i*8 || pong.direction[1:0]!==2'b10 || pby!==6)
-                $fatal(1,"Pong CPU column %0d",i);
+            if(cp!==(i/8)*8 || pong.direction[1]!==1'b1 ||
+               pong.direction[0]!==(((i/4) ^ (i/8)) & 1'b1) || pby!==6)
+                $fatal(1,"Pong CPU bounce at x=%0d",i);
         end
         @(negedge clk); pong.x=15; pong.y=6; pong.b=16; pong.direction=1; pong.motion_phase=0;
         tick;
@@ -202,6 +203,11 @@ module unit;
         if(plives!==2 || pstate!==0) $fatal(1,"Pong upper miss");
         @(negedge clk); pong_session.state=1; pong.y=59; tick;
         if(plives!==1 || pstate!==0) $fatal(1,"Pong lower miss");
+
+        // The default serve must not sustain itself with a stationary paddle.
+        reset; pf=1; tick; pf=0;
+        for(i=0;i<210 && plives==3;i=i+1) tick;
+        if(plives!==2 || pstate!==0) $fatal(1,"Pong default rally still self-sustains");
 
         // Collision map must match the displayed maze exactly.
         for(my=0;my<16;my=my+1) begin

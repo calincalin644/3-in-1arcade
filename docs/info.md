@@ -9,7 +9,10 @@ is held. Holding both directions stops it.
 Set `ui_in[3]` high during reset to select Pong. Pong uses the same video timing
 and controls, with the player paddle at the bottom and a simple CPU paddle at
 the top. The CPU snaps to the ball's 32-logical-pixel column each frame,
-with collision checks on those same column boundaries. Launch starts a rally; missing either paddle costs a life. Set both
+with collision checks on those same column boundaries. Its horizontal rebound
+uses the impact-half bit XOR the column-parity bit, so the default serve no
+longer repeats indefinitely over an unmoved player paddle. This is deterministic,
+not random. Launch starts a rally; missing either paddle costs a life. Set both
 `ui_in[3]` and `ui_in[7]` high during reset to select the Pacman-style maze.
 Pacman uses a constant tile map, 16 collectible pellets, a moving ghost and four-direction
 gamepad controls without a framebuffer; launch starts a life. The player moves

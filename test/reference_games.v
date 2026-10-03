@@ -102,7 +102,7 @@ module reference_paddle_game #(parameter COARSE_CPU=0) (
                     dx_right <= paddle_offset[4];
                 end else if (pong_mode && cpu_hit) begin
                     ball_y <= 24; dy_down <= 1;
-                    dx_right <= cpu_offset[4];
+                    dx_right <= COARSE_CPU ? (cpu_offset[4] ^ ball_x[5]) : cpu_offset[4];
                 end else if (!pong_mode && brick_hit) begin
                     bricks[brick_index] <= 0;
                     dy_down <= !dy_down;

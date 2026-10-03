@@ -108,7 +108,9 @@ class BootArcade:
         finally:
             self.board.reset_project(False)
         time.sleep_ms(100)
-        self.launch()
+        # Leave the complete brick field visible until an explicit serve.
+        if mode != 0:
+            self.launch()
         self.switches += 1
         print('Arcade selection:', MODES[mode], 'via', source)
         return True

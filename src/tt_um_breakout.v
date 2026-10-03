@@ -354,7 +354,9 @@ module arcade_engine (
                 CPU_CHECK: begin
                     // The rendered CPU paddle occupies one whole 32-pixel bin.
                     flags[2] <= !direction[1] && y == 6 && x[5:3] == b[5:3];
-                    flags[3] <= x[2]; phase<=PLAYER_STEP;
+                    // Alternate the rebound rule across CPU columns to break
+                    // the default stationary-paddle rally; no extra state.
+                    flags[3] <= x[2] ^ x[3]; phase<=PLAYER_STEP;
                 end
                 PLAYER_STEP: begin
                     if (buttons[0] != buttons[1])

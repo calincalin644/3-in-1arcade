@@ -798,3 +798,83 @@ The direction-debounce build was subsequently uploaded and its SHA256 verified:
 `7480a68b0c51fc397b9f8e3b1568aee05ba6ef4c0236172a4653794965b39e31`.
 Pacman was started at 25.2 MHz with game-selection shortcuts restored. Physical
 DIPs read zero before loading; Pico BIDIR output enable remains zero.
+
+
+### Break Pong's default stationary-paddle loop (2026-10-03)
+
+The CPU rebound direction now uses `x[2] ^ x[3]` instead of `x[2]`: its
+impact-half bit is combined with the CPU column-parity bit, reusing the existing
+flag register. This remains deterministic and adds no FFs. It fixes the observed
+default trajectory, not every theoretically possible periodic orbit.
+
+With no input after launch, the old rule returned to the same player-paddle
+position every 196 frames and lost no lives in 3,600 frames. The new rule loses
+a life after 206 play frames (about 3.43 seconds), requiring player movement.
+A simple inverted impact bit also broke the loop but mapped to 9,446.5600 µm²;
+using the column bit alone kept the loop. The adopted XOR rule maps to
+9,424.0384 µm² and 147 FFs, saving 5.0048 µm² against the 9,429.0432 µm² baseline.
+
+Tests cover every coarse horizontal impact position (all 64), CPU misses,
+life loss with an unmoved paddle, and the existing control/gameplay unit cases.
+The 10,000-frame reference comparison per game passes with the reference CPU
+rule updated. FPGA use is 827/5,280 LCs; final timing is 30.95 MHz, passing the
+25.2 MHz target. No fresh hardening or pin-level VGA regression was run.
+Experiment sources and logs are in `build/pong-bounce/`.
+
+Uploaded and hash-verified the Pong rebound build, then started Pong at
+25.2 MHz with the board shortcuts restored and Pico BIDIR drivers disabled.
+Bitstream SHA256: `216439327adb08a22b8cb5ea62990388d3e9ff843660b3299ae8210d4b2e1acf`.
+
+
+### Keep Breakout at serve on game selection (2026-10-03)
+
+The persistent demo-board selector now resets Breakout without pulsing launch,
+for both gamepad shortcuts and DIP selection. This keeps all sixteen bricks
+visible until A/Start or BOOT is pressed. Pong and Pacman still auto-launch.
+The earlier one-time diagnostic reset did not change selector behavior and the
+first brick could disappear about 1.28 seconds after automatic launch.
+Nine host selector tests pass, including Breakout waiting, explicit BOOT launch,
+and unchanged automatic launch for the other modes. The updated helper was
+installed on the board and Breakout selected with no launch pulse. No RTL or
+FPGA bitstream changed; area and FF count are unchanged.
+
+
+### Full current regression and faster video sampling (2026-10-03)
+
+Current control/gameplay unit tests, the 10,000-frame reference comparison for
+each game, directed pellet/teleport tests, and all nine board-helper tests pass.
+The original external-pin Breakout test passed. The Pong test was interrupted
+at the user's request and then rerun separately to completion: PASS (212.29 s).
+The original Pacman pellet test passed (197.07 s). The movement/walls test failed
+an elapsed-time assumption: after its fixed return journey Pacman was at row 2,
+not yet row 1. No RTL change was required; the revised test makes a shorter trip
+and keeps explicit return-to-row-1 and continued-top-wall-blocking assertions.
+
+Reduced repeated frame waits in directional/control checks while preserving
+launch debounce and enough updates for visible movement. Image samples are
+batched in raster order; the complete 525-line sync/blanking sweep and initial
+Breakout image use one pass. Maze-wall checks are folded into character scans.
+Pong scans the moving-ball region before the serve row, avoiding another wrap.
+The pellet test retains its 30-frame journey so the player reaches and leaves
+the large pellet. A zero-distance pixel sample does not schedule a zero-length
+cocotb Timer. Tests still access package pins only and support gate-level use.
+
+All four revised external-pin RTL tests passed in independent, concurrent
+Icarus processes, with separate build directories and result XML files:
+
+| Test | Old simulated time (ms) | New simulated time (ms) | New wall time (s) |
+| --- | ---: | ---: | ---: |
+| Breakout/video/control | 652.311 | 282.711 | 115.60 |
+| Pong/gamepad/selection | 608.282 | 389.882 | 176.33 |
+| Pacman/movement/walls | 969.141 (failed before completion) | 687.069 | 258.45 |
+| Pacman/pellets | 579.716 | 549.141 | 214.96 |
+
+Wall times vary with concurrent CPU load; reduced simulated duration is the
+reproducible speed comparison. The old failed movement run is not a full-test
+runtime baseline. No ASIC logic, cell area, or FPGA bitstream changed during
+these test improvements. Current RTL SHA256:
+`f70ecd1cc59aee077d1bcea9a520c7f1083fed177e2537c93fe01f248169303b`.
+Logs, individual result XML, source snapshots and a hash summary are in
+`build/faster-tests/`; earlier runs are in `build/full-regression/`.
+No gate-level simulation of the current revision was run. The new hardening
+workflow must run these tests against its own newly generated routed netlist.

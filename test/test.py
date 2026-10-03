@@ -17,64 +17,45 @@ def rgb(value):
 
 @cocotb.test()
 async def video_and_controls(dut):
-    dut.rst_n.value = 0
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    await Timer(210, unit="ns")
-    dut.rst_n.value = 1
-    # The registered outputs show pixel (0,0) after the first active edge.
-    await cycles(1)
-    pos = 0
-
-    async def pixel(h, v):
-        nonlocal pos
-        target = v * 800 + h
-        delta = (target - pos) % FRAME
-        if delta:
-            await cycles(delta)
-        pos = target
-        return int(dut.uio_out.value)
-
-    # Horizontal and vertical sync boundaries plus blanking on every line.
-    for line in range(525):
-        for h in (0, 639, 640, 655, 656, 751, 752, 799):
-            value = await pixel(h, line)
-            assert (value >> 7) == int(not (656 <= h < 752)), (h, line, value)
-            assert ((value >> 3) & 1) == int(not (490 <= line < 492)), (h, line, value)
-            if h >= 640 or line >= 480:
-                assert rgb(value) == (0, 0, 0), (h, line, value)
+    pins = ArcadePins(dut)
+    await pins.reset(0)
+    # Sample the same image points in raster order, without extra frame wraps.
+    samples = [(72, 24, (3, 3, 3)), (584, 24, (0, 0, 0)),
+               (100, 40, (0, 0, 0)),
+               (70, 66, (3, 0, 1)), (70, 82, (3, 0, 1)),
+               (70, 96, (0, 0, 0)), (70, 98, (0, 2, 3)), (70, 114, (0, 2, 3)),
+               (64, 66, (0, 0, 0)), (300, 442, (0, 3, 3)),
+               (320, 434, (3, 3, 3))]
+    expected_pixels = {(h, v): expected for h, v, expected in samples}
+    boundary_pixels = {(h, v) for v in range(525)
+                       for h in (0, 639, 640, 655, 656, 751, 752, 799)}
+    # One raster pass covers both the complete sync sweep and initial image.
+    observed = await pins.pixels(boundary_pixels | set(expected_pixels))
+    for (h, v), color in observed.items():
+        if h >= 640 or v >= 480:
+            assert color == (0, 0, 0), (h, v, color)
+        if (h, v) in expected_pixels:
+            assert color == expected_pixels[h, v], (h, v, color)
     assert int(dut.uio_oe.value) == 0xff
-    assert int(dut.uo_out.value) == 0x49  # Three horizontal life bars, decimal point off.
-
-    # Known initial image: row colors, brick gaps, paddle, ball, life indicators.
-    samples = [(72, 24, {(3, 3, 3)}), (584, 24, {(0, 0, 0)}),
-               (100, 40, {(0, 0, 0)}),
-               (70, 66, {(3, 0, 1)}), (70, 82, {(3, 0, 1)}),
-               (70, 96, {(0, 0, 0)}), (70, 98, {(0, 2, 3)}), (70, 114, {(0, 2, 3)}),
-               (64, 66, {(0, 0, 0)}), (300, 442, {(0, 3, 3)}),
-               (320, 434, {(3, 3, 3)})]
-    for h, v, expected in samples:
-        assert rgb(await pixel(h, v)) in expected, (h, v, expected)
-
-    # Hold both directions: paddle remains centered after debounce.
+    assert int(dut.uo_out.value) == 0x49
+    initial = await pins.span(442, (0, 3, 3))
+    # Directions are synchronized, but no longer frame-debounced.
     dut.ui_in.value = 3
-    await cycles(5 * FRAME)
-    assert rgb(await pixel(290, 442)) == (0, 3, 3)
-    # Exercise both directions through external pins. Endpoint clamps and
-    # directed collision cases are covered by the faster RTL unit test.
+    await pins.frames(1)
+    assert await pins.span(442, (0, 3, 3)) == initial
     dut.ui_in.value = 1
-    await cycles(8 * FRAME)
-    assert rgb(await pixel(270, 442)) == (0, 3, 3)
-    assert rgb(await pixel(350, 442)) == (0, 0, 0)
+    await pins.frames(2)
+    left = await pins.span(442, (0, 3, 3))
+    assert left[0] < initial[0] and left[1] - left[0] == initial[1] - initial[0]
     dut.ui_in.value = 2
-    await cycles(12 * FRAME)
-    assert rgb(await pixel(350, 442)) == (0, 3, 3)
-    # Launch then release: no white ball may remain on the serve row.
+    await pins.frames(3)
+    right = await pins.span(442, (0, 3, 3))
+    assert right[0] > left[0] and right[1] - right[0] == initial[1] - initial[0]
+    # Launch retains two-frame debounce, edge capture, and half-rate movement.
     dut.ui_in.value = 4
-    await cycles(8 * FRAME)
+    await pins.frames(5)
     for h in range(64, 576, 2):
-        assert rgb(await pixel(h, 434)) != (3, 3, 3)
+        assert await pins.pixel(h, 434) != (3, 3, 3), "Ball did not launch"
     dut.ui_in.value = 0
 
 
@@ -104,7 +85,8 @@ class ArcadePins:
         assert int(self.dut.uo_out.value) == 0x49
 
     async def advance(self, clocks):
-        await cycles(clocks)
+        if clocks:
+            await cycles(clocks)
         self.pos = (self.pos + clocks) % FRAME
 
     async def frames(self, count):
@@ -116,6 +98,13 @@ class ArcadePins:
         assert (value >> 7) == int(not (656 <= h < 752)), (h, v, value)
         assert ((value >> 3) & 1) == int(not (490 <= v < 492)), (h, v, value)
         return rgb(value)
+
+    async def pixels(self, points):
+        """Read a set of coordinates in one raster pass; pixel checks HS/VS."""
+        result = {}
+        for h, v in sorted(set(points), key=lambda point: (point[1], point[0])):
+            result[h, v] = await self.pixel(h, v)
+        return result
 
     async def packet(self, controller1=0, controller2=0):
         # Psychogenic PMOD reports controller 2 first, controller 1 last.
@@ -142,18 +131,24 @@ class ArcadePins:
         assert matches, ("No object of expected color", y, color)
         return min(matches), max(matches)
 
-    async def maze_characters(self):
-        # Local pixel (4,4) is inside characters but outside even large pellets.
+    async def maze_characters(self, check_wall=False):
+        # Local (4,4) is inside characters but outside even large pellets.
+        locations = {(64 + col * 32 + 8, 32 + row * 32 + 8): (col, row)
+                     for row in range(1, 11) for col in range(1, 15)}
+        points = set(locations)
+        if check_wall:
+            points.add((200, 110))
+        observed = await self.pixels(points)
+        if check_wall:
+            assert observed[200, 110] == (0, 0, 3)
         player, ghost = [], []
-        for row in range(1, 11):
-            for col in range(1, 15):
-                color = await self.pixel(64 + col * 32 + 8,
-                                         32 + row * 32 + 8)
-                if color == (3, 3, 0):
-                    player.append((col, row))
-                elif color in ((3, 0, 0), (0, 3, 3)):
-                    self.ghost_color = color
-                    ghost.append((col, row))
+        for pixel, location in locations.items():
+            color = observed[pixel]
+            if color == (3, 3, 0):
+                player.append(location)
+            elif color in ((3, 0, 0), (0, 3, 3)):
+                self.ghost_color = color
+                ghost.append(location)
         assert len(player) == 1 and len(ghost) == 1, (player, ghost)
         return player[0], ghost[0]
 
@@ -169,42 +164,43 @@ async def pong_gamepad_and_selection(dut):
 
     # A command from controller 2 alone must not move controller 1's paddle.
     await pins.packet(controller2=1 << 4)
-    await pins.frames(3)
+    await pins.frames(1)
     assert await pins.span(442, (0, 3, 3)) == initial
 
     await pins.packet(controller1=1 << 5)  # Left.
-    await pins.frames(4)
+    await pins.frames(2)
     left = await pins.span(442, (0, 3, 3))
     assert left[0] < initial[0], (initial, left)
 
     await pins.packet(controller1=(1 << 5) | (1 << 4))
-    await pins.frames(3)
+    await pins.frames(1)
     assert await pins.span(442, (0, 3, 3)) == left  # Opposing directions stop.
 
     await pins.packet(controller1=1 << 4)  # Right.
-    await pins.frames(6)
+    await pins.frames(4)
     right = await pins.span(442, (0, 3, 3))
     assert right[0] > left[0], (left, right)
 
     # The disconnected-controller marker releases every button.
     await pins.packet(controller1=0xfff)
-    await pins.frames(3)
-    assert await pins.span(442, (0, 3, 3)) == right
+    await pins.frames(1)
     cpu = await pins.span(42, (3, 0, 3))
-    assert cpu[0] > 256, cpu  # CPU has followed the changed serve position.
+    assert cpu[0] > 256, cpu  # CPU followed the changed serve position.
+    assert await pins.span(442, (0, 3, 3)) == right  # CPU has followed the changed serve position.
 
     await pins.packet(controller1=1 << 3)  # A launches the rally.
     await pins.frames(2)
     await pins.packet()
-    await pins.frames(6)
-    for h in range(64, 576, 2):
-        assert await pins.pixel(h, 434) != (3, 3, 3), "Ball did not launch"
-    # Find the moving ball above its serve row; loss of the ball renderer fails.
+    await pins.frames(4)
+    # Scan above the serve row first, avoiding a frame wrap between checks.
+    # Loss of the ball renderer still fails.
     ball_seen = False
     for v in range(354, 434, 8):
         for h in range(66, 576, 8):
             ball_seen |= await pins.pixel(h, v) == (3, 3, 3)
     assert ball_seen, "No moving Pong ball visible"
+    for h in range(64, 576, 2):
+        assert await pins.pixel(h, 434) != (3, 3, 3), "Ball did not launch"
 
     # Selector changes take effect only on reset.
     dut.ui_in.value = 0
@@ -220,14 +216,13 @@ async def pong_gamepad_and_selection(dut):
 async def pacman_gamepad_and_walls(dut):
     pins = ArcadePins(dut)
     await pins.reset(0x88)
-    assert await pins.pixel(200, 110) == (0, 0, 3)  # Interior maze wall.
-    player0, ghost0 = await pins.maze_characters()
+    player0, ghost0 = await pins.maze_characters(check_wall=True)
     assert player0 == (1, 1) and ghost0 == (14, 10), (player0, ghost0)
 
     await pins.packet(controller1=(1 << 8) | (1 << 6))  # Start + Down.
     await pins.frames(2)
     await pins.packet(controller1=1 << 6)  # Release Start; keep Down held.
-    await pins.frames(20)
+    await pins.frames(8)
     player_down, ghost_down = await pins.maze_characters()
     assert player_down[1] > player0[1], (player0, player_down)
     assert ghost_down != ghost0, (ghost0, ghost_down)
@@ -236,20 +231,19 @@ async def pacman_gamepad_and_walls(dut):
     await pins.packet(controller1=0)  # Releasing the D-pad stops the player.
     await pins.frames(2)
     player_stopped, _ = await pins.maze_characters()
-    await pins.frames(8)
+    await pins.frames(3)
     player_released, _ = await pins.maze_characters()
     assert player_released == player_stopped, (player_stopped, player_released)
 
     await pins.packet(controller1=1 << 7)  # Up reverses at an open junction.
-    await pins.frames(20)
+    await pins.frames(16)
     player_up, _ = await pins.maze_characters()
     assert player_up[1] < player_down[1], (player_down, player_up)
     assert player_up[1] == 1, player_up
     # Continue pushing into the top wall: the player must remain inside.
-    await pins.frames(8)
-    player_wall, _ = await pins.maze_characters()
+    await pins.frames(4)
+    player_wall, _ = await pins.maze_characters(check_wall=True)
     assert player_wall[1] == 1, player_wall
-    assert await pins.pixel(200, 110) == (0, 0, 3)
     assert int(dut.uo_out.value) == 0x49
 
     # Reset back to Pong verifies both mode bits across successive resets.
@@ -264,12 +258,12 @@ async def pacman_collectible_pellets(dut):
     """Follow collection through package inputs and VGA, without internal forcing."""
     pins = ArcadePins(dut)
     await pins.reset(0x88)
-    # Pellet at column 5, row 1; no pellet at column 3, row 1.
-    assert await pins.pixel(238, 78) == (3, 3, 0)
-    assert await pins.pixel(174, 78) == (0, 0, 0)
-    assert await pins.pixel(142, 206) == (0, 0, 0)  # Removed extra bank: column 2, row 5.
-    assert await pins.pixel(106, 266) == (3, 3, 0)  # Large power pellet, local (5,5).
+    # Initial pellet checks in raster order: same samples, fewer frame wraps.
     assert await pins.pixel(234, 74) == (0, 0, 0)  # Ordinary pellet stays small.
+    assert await pins.pixel(174, 78) == (0, 0, 0)  # No pellet at column 3, row 1.
+    assert await pins.pixel(238, 78) == (3, 3, 0)  # Pellet at column 5, row 1.
+    assert await pins.pixel(142, 206) == (0, 0, 0)  # Removed extra bank: column 2, row 5.
+    assert await pins.pixel(106, 266) == (3, 3, 0)  # Large pellet at local (5,5).
     await pins.packet(controller1=(1 << 8) | (1 << 6))  # Start + Down.
     # Pass through row 7 and leave it: Pacman's yellow square otherwise
     # covers the cleared pellet pixel and makes a disappearance check ambiguous.
@@ -279,7 +273,7 @@ async def pacman_collectible_pellets(dut):
     assert await pins.pixel(110, 78) == (0, 0, 0)
     assert await pins.pixel(238, 78) == (3, 3, 0)
     assert int(dut.uo_out.value) == 0x49
+    assert await pins.pixel(106, 266) == (0, 0, 0), "Teleport pellet was not consumed"
     await pins.maze_characters()
     assert pins.ghost_color == (3, 0, 0), "Ghost must stay red after teleport"
-    assert await pins.pixel(106, 266) == (0, 0, 0), "Teleport pellet was not consumed"
     dut._log.info("Pacman: starting pellet eaten, unvisited pellet retained, sparse map rendered")

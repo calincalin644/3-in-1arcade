@@ -66,8 +66,18 @@ class ControlsTest(unittest.TestCase):
             self.assertEqual(self.board.captured_mode,mode)
             self.assertEqual(self.board.resets[-2:],[True,False])
             self.assertEqual(self.ctl.read_dips(),0)
+            self.assertEqual(self.ctl.pulsing, mode != 0)
             advance(141);self.ctl.poll(None)
             self.assertEqual(self.board.pins.ui_in2.raw_pin.mode,Pin.IN)
+    def test_breakout_waits_then_boot_launches(self):
+        self.ctl.select_game(0)
+        self.assertFalse(self.ctl.pulsing)
+        self.assertEqual(self.board.pins.ui_in2.raw_pin.mode,Pin.IN)
+        self.ctl.press()
+        self.assertTrue(self.ctl.pulsing)
+    def test_dip_breakout_waits(self):
+        self.ctl.select_game(0,'dip')
+        self.assertFalse(self.ctl.pulsing)
     def test_active_dip_blocks_gamepad(self):
         self.board.pins.ui_in7.raw_pin.external=1
         self.assertFalse(self.ctl.select_game(0))

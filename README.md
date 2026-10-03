@@ -23,11 +23,12 @@ that shortens as lives are lost.
   not a change to the arcade RTL or ASIC.
 - **Gamepad selection on the ETR board:** keep DIP **3 and 7 OFF**, then press
   **Select+B** for Breakout, **Select+Y** for Pong, or **Select+A** for Pacman.
-  The board resets and launches the chosen game automatically. Release the
+  The board resets the chosen game. Breakout waits for A/Start or BOOT to serve;
+  Pong and Pacman launch automatically. Release the
   shortcut before selecting again. A shortcut can also load the arcade directly
   from the factory test. Use the working gamepad; ordinary A/Start still launches.
 - **Live DIP selection on the ETR board:** once the arcade is loaded, changing
-  DIP 3/7 to a valid setting for 0.5 seconds selects, resets and launches that
+  DIP 3/7 to a valid setting for 0.5 seconds selects and resets that
   game. OFF/ON is reserved and ignored. Unchanged DIPs do not override gamepad
   selection. Gamepad selection is rejected until both selection DIPs are OFF.
 - **BIDIR:** Tiny VGA PMOD and monitor.
