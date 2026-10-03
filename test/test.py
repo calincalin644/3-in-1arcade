@@ -194,11 +194,16 @@ async def pong_gamepad_and_selection(dut):
     await pins.frames(4)
     # Scan above the serve row first, avoiding a frame wrap between checks.
     # Loss of the ball renderer still fails.
-    ball_seen = False
-    for v in range(354, 434, 8):
-        for h in range(66, 576, 8):
-            ball_seen |= await pins.pixel(h, v) == (3, 3, 3)
-    assert ball_seen, "No moving Pong ball visible"
+    # Ball is shown on movement frames and hidden on alternate frames.
+    # Scan two consecutive frames: exactly one must contain the moving ball.
+    visibility = []
+    for _ in range(2):
+        ball_seen = False
+        for v in range(354, 434, 8):
+            for h in range(66, 576, 8):
+                ball_seen |= await pins.pixel(h, v) == (3, 3, 3)
+        visibility.append(ball_seen)
+    assert sum(visibility) == 1, ("Expected alternating Pong ball visibility", visibility)
     for h in range(64, 576, 2):
         assert await pins.pixel(h, 434) != (3, 3, 3), "Ball did not launch"
 

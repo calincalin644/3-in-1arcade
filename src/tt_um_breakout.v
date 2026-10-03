@@ -35,14 +35,14 @@ module tt_um_breakout (
     wire [7:0] aux_x={grid_a,2'b0}, aux_y={grid_b,2'b0};
     wire [15:0] bricks;
     wire [1:0] lives, state;
-    wire lost, won, done, launch_saved;
+    wire lost, won, done, launch_saved, ball_phase;
     wire [2:0] pac_dir;
     arcade_session session(clk, rst_n, ena, done, launch_saved,
                             lost, won, lives, state, /* restart unused */);
     arcade_engine engine(clk, rst_n, ena, frame, left, right, up, down,
         launch, pong_mode, pacman_mode, state,
         grid_x, grid_y, grid_a, grid_b, bricks, pac_dir,
-        lost, won, done, launch_saved);
+        lost, won, done, launch_saved, ball_phase);
     // One physical bank: ball/Pacman (x,y), paddle/ghost-x (a), CPU/ghost-y (b).
     wire [7:0] paddle=aux_x, cpu_paddle=aux_y, ball_x=pos_x, ball_y=pos_y;
     wire [7:0] pac_x=pos_x, pac_y=pos_y, ghost_x=aux_x, ghost_y=aux_y;
@@ -52,7 +52,7 @@ module tt_um_breakout (
     wire [5:0] rgb_game, rgb_pacman;
     breakout_renderer renderer(h[9:1], v[8:1], active, pong_mode,
                                paddle, cpu_paddle, ball_x, ball_y,
-                               selected_bricks, lives, state, rgb_game);
+                               selected_bricks, lives, state, rgb_game, ball_phase);
     pacman_renderer pac_renderer(h[9:1], v[8:1], active,
                                   pac_x, pac_y, ghost_x, ghost_y,
                                   pac_dir,
@@ -187,7 +187,8 @@ module arcade_engine (
     output reg [15:0] bricks,
     output reg [2:0] direction,
     output reg lost, won,
-    output wire done, launch_saved
+    output wire done, launch_saved,
+    output reg motion_phase
 );
     localparam SERVE=2'd0, PLAY=2'd1;
     localparam STOP=3'd0, LEFT=3'd1, RIGHT=3'd2, UP=3'd3, DOWN=3'd4;
@@ -201,7 +202,7 @@ module arcade_engine (
     reg alu_ready;
     // IDLE toggles this on PLAY frames. Pacman uses the old value there;
     // CPU_STEP uses the new value later in the same update.
-    reg motion_phase; // Half-rate ball/maze updates; inputs sampled every frame.
+    // motion_phase also strobes ball visibility; no extra frame counter.
     reg [4:0] buttons;
     // Maze: {down,up,right,left}; paddles: {CPU direction,CPU hit,
     // player direction,player hit}. These uses never overlap.
@@ -507,7 +508,8 @@ module breakout_renderer (
     input wire [7:0] paddle, cpu_paddle, ball_x, ball_y,
     input wire [15:0] bricks,
     input wire [1:0] lives, state,
-    output reg [5:0] rgb
+    output reg [5:0] rgb,
+    input wire ball_phase
 );
     // Playfield: x=32..287, with power-of-two brick indexing (32x16 cells).
     wire in_field = x >= 32 && x < 288;
@@ -538,10 +540,10 @@ module breakout_renderer (
                         rgb = 6'b11_00_11;
                     if (paddle_delta[7:5] == 0 && y[7:2] == 55)
                         rgb = 6'b00_11_11;
-                    if (ball && state < 2) rgb = 6'b11_11_11;
+                    if (ball && (ball_phase ? state < 2 : state == 0)) rgb = 6'b11_11_11;
                 end else begin
                     if (paddle_delta[7:5] == 0 && y[7:2] == 55) rgb = 6'b00_11_11;
-                    if (ball && state < 2) rgb = 6'b11_11_11;
+                    if (ball && (ball_phase ? state < 2 : state == 0)) rgb = 6'b11_11_11;
                 end
                 // Central status bar: red = game over; green = all bricks cleared.
                 if (state[1] && x[8:6] == 3'd2 && y[7:3] == 5'd15)

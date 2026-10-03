@@ -11,7 +11,7 @@ module equivalence_case #(parameter MODE=0)(
     wire [2:0] direction,rdirection;
     wire lost,won,done,launch_saved,rlost,rwon,restart;
     arcade_engine dut(clk,rst,ena,frame,left,right,up,down,launch,
-        MODE==1,MODE==2,state,x,y,a,b,bricks,direction,lost,won,done,launch_saved);
+        MODE==1,MODE==2,state,x,y,a,b,bricks,direction,lost,won,done,launch_saved,);
     arcade_session session(clk,rst,ena,done,launch_saved,lost,won,lives,state,);
     reference_session ref_session(clk,rst,ena,frame,launch,rlost,rwon,rlives,rstate,restart);
     generate if(MODE==2) begin: maze

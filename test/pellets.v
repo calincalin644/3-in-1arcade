@@ -9,7 +9,7 @@ module pellets;
     wire [1:0] lives,state;
     wire lost,won,done,launch_saved;
     arcade_engine engine(clk,rst_n,ena,frame,1'b0,1'b0,1'b0,1'b0,
-        launch,1'b0,1'b1,state,x,y,a,b,remaining,,lost,won,done,launch_saved);
+        launch,1'b0,1'b1,state,x,y,a,b,remaining,,lost,won,done,launch_saved,);
     arcade_session session(clk,rst_n,ena,done,launch_saved,lost,won,lives,state,);
     reg [8:0] pixel_x;
     reg [7:0] pixel_y;

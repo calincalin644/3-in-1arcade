@@ -1083,3 +1083,59 @@ reference comparison pass. FPGA build: 827 LCs, final timing 31.73 MHz at a
 has not been uploaded. Logs and experimental sources: build/dip-compact/.
 
 The compact-decoder bitstream was subsequently uploaded and SHA256-verified: `f7d70c18c3b7e8c69cb80d9ef2558855874e701d00ec1711c2225c0a7dd0edc1`. Pacman is selected with no launch pulse, three-life output 0x49, and a 25.2 MHz clock.
+
+### Rejected experiment: four-VGA-pixel ball movement at 60 Hz
+
+Added half-grid X/Y bits to the existing six-bit position bank, retaining the
+shared six-bit ALU. Carry/borrow into each coarse coordinate occurs on alternate
+half-steps; ball microsteps now execute on every PLAY frame. Collisions qualify
+the finer positions, and rendering retains an 8x8 VGA footprint across grid
+boundaries. Serve/reset clears both half bits. Pacman and paddles are unchanged.
+Average free-flight speed is unchanged; exact collision trajectories can differ.
+
+Local SKY130 synthesis: 9,948.2912 µm², 149 FFs (+529.2576 µm² and 2 FFs versus
+9,419.0336 µm² / 147 FFs). This exceeds the earlier 100–300 µm² estimate.
+Three alternative renderer expressions synthesized larger (10,035.8752 to
+10,072.1600 µm²), so the two-pixel-unit subtraction renderer was retained.
+FPGA: 869 LCs, final timing 27.63 MHz, passing the 25.2 MHz target. This FPGA
+experiment does not establish one-tile ASIC fit; new hardening is required.
+
+Updated independent pixel-coordinate reference model and directed cadence tests.
+All three engines match the independent model for 10,000 frame requests each.
+Unit/collision/life tests and Pacman pellet tests pass. New ball_video test checks
+whole/half-grid starts, bin crossings and playfield edges: the ball always covers
+16 logical pixels / 64 VGA pixels. Pong's stationary-paddle first loss occurs at
+205 PLAY-frame requests (approximately 3.42 seconds).
+
+External-pin Breakout and Pong tests pass on this version in 103.23 s and 139.85 s respectively; result XML checked for one passing case each.
+
+Uploaded and SHA256-verified `e4b6211d88bec4851eb368d22fe3e60c728dd5ae90954edd6e14410794b741fe` on FabricFox. Breakout selected with three lives (0x49), no launch pulse, and a 25.2 MHz clock.
+
+The user rejected this experiment because of the area increase. Restored the
+pre-experiment RTL, tests, Makefile and current documentation from commit
+2fbeda5. The compact DIP-only Pacman decoder, two cyan teleport pellets, and
+explicit start behavior remain. Ball movement returns to eight VGA pixels
+every second frame (30 Hz), with synthesis area 9,419.0336 µm² and 147 FFs.
+Experimental sources and logs remain in build/ball60 for reference.
+
+Rollback validation: unit and 10,000-frame reference tests pass. Forced FPGA rebuild reproduces the exact prior bitstream SHA256 `f7d70c18c3b7e8c69cb80d9ef2558855874e701d00ec1711c2225c0a7dd0edc1` (827 LCs, 31.73 MHz).
+
+### Alternate-frame ball visibility trial
+
+Breakout/Pong reuse the engine's motion_phase bit: during PLAY, the ball is
+visible on movement frames and absent on the following frame. SERVE always
+shows the stationary ball. The 30 Hz movement, 8x8 VGA ball size, collision
+logic, paddles, lives and Pacman are unchanged. This is a 30 Hz flashing-ball
+experiment for visual evaluation, not 60 Hz movement or guaranteed blur removal.
+
+Equivalent visibility expressions mapped to 9,505.3664, 9,475.3376, 9,476.5888,
+and 9,459.0720 µm²; the last (conditional expression) was adopted. Compared with
+the non-flashing 9,419.0336 µm² build, the measured increment is 40.0384 µm².
+All variants retain 147 FFs. These are local whole-design synthesis results;
+one-tile physical fit still requires a new hardening run.
+Unit, 10,000-frame reference comparisons, pellet and 12 board-helper tests pass.
+The new ball_strobe test covers both games, every session state and phase, and
+checks that the paddle/life icons do not flash. The external Pong test now scans
+two consecutive frames and requires exactly one to show the moving ball.
+
+External-pin Pong strobe test passed in 136.93 s. Final FPGA build: 835 LCs, 32.04 MHz timing estimate, passing 25.2 MHz.

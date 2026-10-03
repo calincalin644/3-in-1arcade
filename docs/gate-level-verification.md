@@ -8,7 +8,9 @@ without debounce (their synchronizers remain). The board selector leaves
 all three games waiting for an explicit launch. The updated helper passes
 12 host tests, including releasing the selection chord before resetting.
 
-Current unit/reference/pellet tests pass. All four external-pin RTL tests and
+Current unit/reference/pellet and ball-strobe tests pass. The updated external
+Pong test passes, confirming alternating ball visibility in two consecutive
+frames (136.93 s, build/ball-flash/pong.xml). All four external-pin RTL tests and
 all nine board-helper tests passed before adding the second teleport pellet.
 That addition has directed tests and a fresh VGA capture; an external-pin
 rerun is pending. The FPGA build meets 25.2 MHz. The faster video tests
@@ -18,7 +20,7 @@ and 215 s (Pacman pellets), run concurrently. Logs and result XML are in the
 local `build/faster-tests/` directory.
 
 **The current revision has not been verified against a newly hardened routed
-netlist.** Local synthesis is 9,419.0336 µm² with 147 FFs; physical one-tile fit,
+netlist.** Local synthesis is 9,459.0720 µm² with 147 FFs; physical one-tile fit,
 post-route checks and gate-level simulation require a fresh hardening run.
 The historical results below do not establish those properties for this RTL.
 

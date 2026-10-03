@@ -53,6 +53,9 @@ launch/restart. Keep DIP 2 OFF when using it.
 After a lost life, launch again. After game over or victory, press once to reset
 the game, release, then press again to launch.
 
+**Visibility trial:** during play, the Breakout/Pong ball is hidden on alternate
+frames. Its 30 Hz movement is unchanged; the stationary serve ball stays visible.
+
 ## The games
 
 - **Breakout:** clear the 8×2 brick field. Move the paddle while holding a
@@ -91,10 +94,10 @@ The persistent selector uses `scripts/arcade_boot.py` and
 
 | Current combined design | Result |
 | --- | ---: |
-| Local SKY130 synthesis cell area | **9,419.03 µm²** |
+| Local SKY130 synthesis cell area | **9,459.07 µm²** |
 | Flip-flops | **147** |
-| FabricFox FPGA logic cells | **827 / 5,280** |
-| FPGA timing | **31.73 MHz**, passing 25.2 MHz |
+| FabricFox FPGA logic cells | **835 / 5,280** |
+| FPGA timing | **32.04 MHz**, passing 25.2 MHz |
 | Current RTL tests | Unit/reference/pellet tests pass; latest second-teleport change awaits external-pin rerun |
 | Demo-board helper tests | 9 pass |
 

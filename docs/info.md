@@ -92,6 +92,12 @@ Vertical segments and the decimal point remain off.
 | Video output | RGB and both sync signals registered together |
 | Memory / PLL / DSP blocks | None; no framebuffer |
 
+The current visibility trial hides the Breakout/Pong ball on alternate PLAY
+frames, using the existing movement-phase bit. The ball stays visible while
+waiting to serve. It still moves eight VGA pixels at 30 Hz; this experiment
+reduces display duty cycle and may produce visible flicker. Other objects and
+Pacman are unchanged.
+
 RGB is black during blanking. Horizontal sync is active low at pixels 656–751,
 and vertical sync at lines 490–491. Gameplay updates start in vertical blanking
 and complete before the next active image. The sequential engine checks the
@@ -108,10 +114,10 @@ Mode selection is held until reset.
 
 | Combined resource measurement | Current value |
 | --- | ---: |
-| Local SKY130 synthesis cell area | 9,419.0336 µm² |
+| Local SKY130 synthesis cell area | 9,459.0720 µm² |
 | Flip-flops | 147 |
-| FabricFox packed logic cells | 827 / 5,280 |
-| FPGA final timing estimate | 31.73 MHz (25.2 MHz target passes) |
+| FabricFox packed logic cells | 835 / 5,280 |
+| FPGA final timing estimate | 32.04 MHz (25.2 MHz target passes) |
 
 These are local synthesis and FPGA results, not current routed ASIC occupancy.
 The previously hardened revision and its remaining warnings are described in
