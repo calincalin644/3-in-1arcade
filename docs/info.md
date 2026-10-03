@@ -19,8 +19,7 @@ a held direction continues the current heading until a turn is safe. At a
 boundary, a blocked requested direction stops the player. Simultaneous directions
 have priority left, right, up, then down; the ghost moves independently. It avoids immediately reversing when another
 open route exists, allowing it to escape two-cell oscillation beside walls.
-It again compares its position with the player to chase, or to flee while
-vulnerable. This is local steering, not complete maze pathfinding.
+It compares its position with the player to choose a chasing direction. This is local steering, not complete maze pathfinding.
 The 16 pellets occupy maze columns 1, 5, 9, 13 and rows 1, 3, 5, 7
 (zero-based).
 Entering a pellet cell during play clears it. Eat all 16 to win (green status
@@ -29,12 +28,13 @@ displayed as 128×16 VGA pixels: red for loss and green for victory. Losing a li
 restores all 16. There is no separate score counter. The player is a solid yellow square without
 mouth animation. One of the 16 pellets, at column 1 and row 7,
 is a 6×6 logical-pixel power pellet; the other 15 pellets are 2×2. Eating it
-starts a 120-tick timer clocked every second frame (239–240 frames, about four seconds). The ghost turns cyan,
-prefers open directions away from the player and may reverse to escape. Contact
-while powered respawns the ghost without losing a life. A fresh power pickup
-protects against contact in the same update. At timer expiry the ghost returns
-to red and normal contact costs a life. Reset/restart clears the timer; `ena=0`
-pauses it. The power pellet shares the existing bitmap and counts toward victory.
+immediately teleports the ghost to its starting position (maze column 14,
+row 10), facing left. It stays red and resumes normal chasing on subsequent
+ghost updates. Pickup takes priority over contact in the same update, but there
+is no lasting immunity, vulnerability timer, or fleeing mode. The cleared pellet
+cannot teleport the ghost again until restart; losing a life does not restore it.
+The power pellet shares the existing bitmap and counts toward victory.
+Disabling the engine (`ena=0`) pauses collection and teleportation.
 
 All three games use one sequential movement engine and one lives/session controller.
 Four 6-bit position registers serve ball X/Y and paddle X positions in Breakout/Pong,
@@ -43,8 +43,8 @@ or player X/Y and ghost X/Y in Pacman. Movement and offset calculations use a sh
 neighbors in successive operations; the renderer has its own wall lookup.
 The six-bit brick collision probe holds `{hit, unused, row, column}` in Breakout
 and doubles as ghost direction storage in bits [5:3] for Pacman. Its lower
-three bits store the low bits of the power timer during Pacman; only four
-additional flip-flops store the upper timer bits. The player
+three bits are only needed by Breakout; the teleport effect needs no timer or
+additional state bits. The player
 request is decoded directly from the frame-latched buttons, without a separate
 remembered request.
 The 16-bit bitmap stores either Pacman pellets or Breakout bricks. The bitmap uses explicit

@@ -9,17 +9,17 @@ module equivalence_case #(parameter MODE=0)(
     wire [15:0] bricks,rbricks;
     wire [1:0] lives,state,rlives,rstate;
     wire [2:0] direction,rdirection;
-    wire lost,won,done,launch_saved,rlost,rwon,restart,frightened,rfrightened;
+    wire lost,won,done,launch_saved,rlost,rwon,restart;
     arcade_engine dut(clk,rst,ena,frame,left,right,up,down,launch,
-        MODE==1,MODE==2,state,x,y,a,b,bricks,direction,lost,won,done,launch_saved,frightened);
+        MODE==1,MODE==2,state,x,y,a,b,bricks,direction,lost,won,done,launch_saved);
     arcade_session session(clk,rst,ena,done,launch_saved,lost,won,lives,state,);
     reference_session ref_session(clk,rst,ena,frame,launch,rlost,rwon,rlives,rstate,restart);
     generate if(MODE==2) begin: maze
         reference_pacman_game reference_game(clk,rst,ena,frame,left,right,up,down,launch,rstate,restart,
-            rx,ry,ra,rb,rdirection,rscore,rlost,rbricks,rwon,rfrightened);
+            rx,ry,ra,rb,rdirection,rscore,rlost,rbricks,rwon);
         always @(posedge check) begin
-            if({direction,dut.ghost_dir,bricks,frightened} !==
-               {rdirection,reference_game.ghost_dir,rbricks,rfrightened})
+            if({direction,dut.ghost_dir,bricks} !==
+               {rdirection,reference_game.ghost_dir,rbricks})
                 $fatal(1,"Maze steering/pellets differ at frame %0d",frame_number);
         end
     end else begin: paddle

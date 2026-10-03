@@ -122,23 +122,12 @@ module reference_pacman_game (
     output reg [7:0] score,
     output wire lost,
     output reg [15:0] pellets,
-    output wire won, frightened
+    output wire won
 );
     localparam SERVE=2'd0, PLAY=2'd1;
     localparam STOP=3'd0, LEFT=3'd1, RIGHT=3'd2, UP=3'd3, DOWN=3'd4;
     wire [2:0] wanted = left ? LEFT : right ? RIGHT : up ? UP : down ? DOWN : STOP;
-    reg [6:0] power_ticks;
     wire power_eaten = state == PLAY && cell_x == 1 && cell_y == 7 && pellets[12];
-    wire power_active = power_eaten || (frightened && !(motion_phase && power_ticks == 1));
-    assign frightened = power_ticks != 0;
-    always @(posedge clk) begin
-        if (!rst_n) power_ticks <= 0;
-        else if (ena && frame) begin
-            if (state != PLAY) power_ticks <= 0;
-            else if (power_eaten) power_ticks <= 120;
-            else if (power_ticks != 0 && motion_phase) power_ticks <= power_ticks - 1'b1;
-        end
-    end
     reg motion_phase;
     always @(posedge clk) begin
         if (!rst_n) motion_phase <= 0;
@@ -186,16 +175,16 @@ module reference_pacman_game (
     wire forward_right = ghost_open_right && ghost_dir != LEFT;
     wire forward_up = ghost_open_up && ghost_dir != DOWN;
     wire forward_down = ghost_open_down && ghost_dir != UP;
-    wire can_advance = !power_active && (forward_left || forward_right || forward_up || forward_down);
+    wire can_advance = (forward_left || forward_right || forward_up || forward_down);
     wire choose_left = can_advance ? forward_left : ghost_open_left;
     wire choose_right = can_advance ? forward_right : ghost_open_right;
     wire choose_up = can_advance ? forward_up : ghost_open_up;
     wire choose_down = can_advance ? forward_down : ghost_open_down;
     wire [2:0] ghost_turn =
-        (power_active ? ghost_cell_x < cell_x : ghost_cell_x > cell_x) && choose_left ? LEFT :
-        (power_active ? ghost_cell_x > cell_x : ghost_cell_x < cell_x) && choose_right ? RIGHT :
-        (power_active ? ghost_cell_y < cell_y : ghost_cell_y > cell_y) && choose_up ? UP :
-        (power_active ? ghost_cell_y > cell_y : ghost_cell_y < cell_y) && choose_down ? DOWN :
+        (ghost_cell_x > cell_x) && choose_left ? LEFT :
+        (ghost_cell_x < cell_x) && choose_right ? RIGHT :
+        (ghost_cell_y > cell_y) && choose_up ? UP :
+        (ghost_cell_y < cell_y) && choose_down ? DOWN :
         choose_left ? LEFT : choose_right ? RIGHT :
         choose_up ? UP : choose_down ? DOWN : STOP;
     wire [2:0] ghost_move_dir = ghost_aligned ? ghost_turn : ghost_dir;
@@ -204,7 +193,7 @@ module reference_pacman_game (
     wire [7:0] ghost_next_y = ghost_move_dir == UP ? ghost_y - 4 :
                               ghost_move_dir == DOWN ? ghost_y + 4 : ghost_y;
     wire contact = pac_x[7:4] == ghost_x[7:4] && pac_y[7:4] == ghost_y[7:4];
-    assign lost = contact && !power_active;
+    assign lost = contact && !power_eaten;
 
     assign won = pellets == 0;
     integer pellet_number;
@@ -241,7 +230,7 @@ module reference_pacman_game (
                     if (left || right || up || down) begin
                         pac_x <= next_x; pac_y <= next_y;
                     end
-                    if (contact && power_active) begin
+                    if (power_eaten) begin
                         ghost_x <= 224; ghost_y <= 160; ghost_dir <= LEFT;
                     end else if (!motion_phase) begin
                     ghost_x <= ghost_next_x; ghost_y <= ghost_next_y;

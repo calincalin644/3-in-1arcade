@@ -256,7 +256,7 @@ module unit;
         force pac.flags=4'b0010; force pac.brick_probe[5:3]=3'd1; #1;
         if(pac.ghost_turn!==3'd2) $fatal(1,"Ghost refused dead-end reversal");
         release pac.flags; release pac.brick_probe[5:3];
-        @(negedge clk); pac.x=4; pac.y=4; pac.a=4; pac.b=4; pac.power_high=0; pac.brick_probe[2:0]=0; pac_session.state=1;
+        @(negedge clk); pac.x=4; pac.y=4; pac.a=4; pac.b=4; pac_session.state=1;
         tick; if(paclives!==2 || pacstate!==0) $fatal(1,"Pacman life");
         // Inputs belong to the frame request, not the later ALU cycles.
         // Pausing in mid-transaction must hold both phase and position.

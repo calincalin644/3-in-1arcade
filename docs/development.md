@@ -693,3 +693,83 @@ not routed occupancy measurements. No FPGA reprogramming was needed.
 
 Experiment sources, synthesis logs, and the equivalence proof are retained
 in `build/brick-mask-experiment/` (local build artifacts).
+
+
+### Shared overlays and power-timer experiments (2026-10-03)
+
+Tested against commit `5508f8c`, with the identical local SKY130 HD synthesis
+recipe on the complete three-game design. The overlay variant moves the life
+bar and win/lose rectangle after game RGB selection. Renderer parameters disable
+the original overlays in the top-level build while retaining them by default
+for standalone renderer tests. Constant parameters do not add hardware.
+A SAT proof verified identical final RGB for all renderer input combinations,
+including every mode, state, life count, coordinate, and active-video value.
+
+The first timer variant loads 127 instead of 120 at the existing 30 Hz cadence,
+giving 253–254 subsequent frames (about 4.22–4.23 seconds) of protection.
+Additional synthesis-only screening tried a seven-bit up-counter and eight-bit
+up/down counters with the MSB marking the active interval. The eight-bit versions
+would provide 128 ticks (about 4.25–4.27 seconds) and add one FF. These additional
+encodings were not subjected to gameplay regressions because none saved area.
+
+| Variant | Local cell area (µm²) | FFs |
+| --- | ---: | ---: |
+| Baseline | 9,889.4848 | 155 |
+| Shared final overlays | 10,127.2128 | 155 |
+| 127-tick down-counter | 10,019.6096 | 155 |
+| Shared overlays + 127-tick down-counter | 10,004.5952 | 155 |
+| 127-tick up-counter | 9,975.8176 | 155 |
+| Shared overlays + 127-tick up-counter | 10,069.6576 | 155 |
+| 128-tick up-counter, MSB active | 9,985.8272 | 156 |
+| Shared overlays + 128-tick up-counter | 10,104.6912 | 156 |
+| 128-tick down-counter, MSB active | 10,063.4016 | 156 |
+| Shared overlays + 128-tick down-counter | 10,122.2080 | 156 |
+
+The combined shared-overlay/127-tick down-counter candidate passed control and
+engine unit tests, directed pellet/power tests (including both pickup phases,
+expiration collision, pause, and restart), and the 10,000-frame comparison for
+each game with the reference timer adjusted to 127 ticks. The SAT proof covers
+the composed video path; standalone renderer tests retain their default overlays.
+No FPGA build, upload, or hardening was performed for these larger candidates.
+
+All candidates increased mapped area, so neither proposal was adopted. The
+working RTL and FPGA image remain unchanged. Sources, synthesis logs, proof,
+and modified experimental tests are in `build/overlay-timer-experiment/` as
+local build artifacts. Synthesis savings cannot be inferred merely from simpler
+source expressions or visually duplicated logic.
+
+
+### Replace timed vulnerability with ghost teleport (2026-10-03)
+
+The large pellet at maze column 1, row 7 now immediately returns the ghost to
+its starting location (column 14, row 10), facing left, regardless of its current
+position. Pickup takes priority over same-update contact. The ghost stays red
+and resumes its existing intelligent, anti-reversal chase on subsequent ghost
+updates. There is no lasting immunity or edible-ghost/fleeing mode. The other
+15 pellets and collect-all victory are unchanged; life loss preserves cleared
+food and restart restores the bank.
+
+Removed the four dedicated power-timer FFs, updates to the three shared timer
+bits, countdown/expiry logic, fleeing selection and frightened colour/interface.
+The existing ghost coordinates and heading handle teleportation without new
+state. Local SKY130 HD area is 9,626.7328 µm² with 151 FFs, down from
+9,889.4848 µm² and 155 FFs: 262.7520 µm² (2.66%) and four FFs saved.
+This remains 374.1088 µm² above the 9,252.6240 µm² previously hardened local
+baseline; new hardening is required to establish physical fit.
+
+Directed tests passed for remote pickup on both movement phases, disabled
+engine, same-update contact, no repeat teleport, red ghost, resumed chase,
+ordinary pellets, immediate later collision, last-pellet victory, life loss,
+and restart. Control/engine unit tests and the 10,000-frame reference comparison
+for each game passed. FPGA implementation uses 839/5,280 LCs and meets 25.2 MHz
+(final nextpnr estimate 33.31 MHz).
+
+The bitstream was uploaded to the demo board, SHA256 verified, and Pacman
+started at exactly 25.2 MHz with the game-selection helper restored. All INPUT
+DIPs read OFF before loading and the Pico BIDIR output enable remains zero.
+Uploaded SHA256: `99e2d993d83fc639f35d41a8e524666da20754c9d8f6cd1dacd8968178d4b470`.
+The focused external-pin VGA/gamepad pellet regression passed. Its movement
+sequence was extended from 26 to 30 frames so Pacman's yellow square leaves the
+power-pellet cell before checking that the pellet disappears; the earlier sample
+was obscured by the player. The test also checks that the ghost stays red.
+Experiment sources and logs are retained in `build/pacman-teleport/`.

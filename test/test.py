@@ -271,12 +271,15 @@ async def pacman_collectible_pellets(dut):
     assert await pins.pixel(106, 266) == (3, 3, 0)  # Large power pellet, local (5,5).
     assert await pins.pixel(234, 74) == (0, 0, 0)  # Ordinary pellet stays small.
     await pins.packet(controller1=(1 << 8) | (1 << 6))  # Start + Down.
-    await pins.frames(26)
+    # Pass through row 7 and leave it: Pacman's yellow square otherwise
+    # covers the cleared pellet pixel and makes a disappearance check ambiguous.
+    await pins.frames(30)
     await pins.packet(controller1=0)
     # Player has left its starting cell: that pellet has disappeared.
     assert await pins.pixel(110, 78) == (0, 0, 0)
     assert await pins.pixel(238, 78) == (3, 3, 0)
     assert int(dut.uo_out.value) == 0x49
     await pins.maze_characters()
-    assert pins.ghost_color == (0, 3, 3), "Power pellet did not change ghost color"
+    assert pins.ghost_color == (3, 0, 0), "Ghost must stay red after teleport"
+    assert await pins.pixel(106, 266) == (0, 0, 0), "Teleport pellet was not consumed"
     dut._log.info("Pacman: starting pellet eaten, unvisited pellet retained, sparse map rendered")

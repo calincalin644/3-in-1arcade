@@ -53,9 +53,9 @@ are zero-based; this original hardware interface remains unchanged:
 Pacman moves while a direction is held and stops on release; turns occur at
 maze-cell boundaries. Pacman moves twice as fast as the ghost. The ghost keeps moving when the player stops. Eat all **16 yellow pellets** to
 win; losing a life preserves collected pellets. Pacman is a solid yellow square.
-One larger yellow pellet at column 1, row 7 makes the ghost cyan and vulnerable
-for four seconds;
-touching it sends it back to its starting position. The ghost chases normally and tries to flee while vulnerable. Restarting refills them.
+One larger yellow pellet at column 1, row 7 immediately sends the ghost back
+to its starting position. The ghost stays red and resumes chasing; pickup
+protects against contact in that update only. Restarting refills all pellets.
 
 One controller is enough. Release launch before pressing again; after game over,
 press once to restart and again to launch. See [wiring and gameplay](docs/info.md)
