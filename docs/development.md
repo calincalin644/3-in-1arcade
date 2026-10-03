@@ -773,3 +773,28 @@ sequence was extended from 26 to 30 frames so Pacman's yellow square leaves the
 power-pellet cell before checking that the pellet disappears; the earlier sample
 was obscured by the player. The test also checks that the ghost stays red.
 Experiment sources and logs are retained in `build/pacman-teleport/`.
+
+
+### Remove left/right DIP debounce (2026-10-03)
+
+Left/right now use `sync2[0:1]` directly, ORed with the gamepad directions.
+Both two-stage synchronizers remain. The previous/stable frame samples now
+store only launch, preserving its bounce rejection and edge-triggered behavior.
+Direction changes no longer wait for two matching frames, although gameplay
+still updates on frame boundaries. Mechanical bounce may briefly interrupt or
+trigger directional movement.
+
+The complete local SKY130 HD synthesis reports 9,429.0432 µm² and 147 FFs,
+versus 9,626.7328 µm² and 151 FFs before: 197.6896 µm² (2.05%) and four FFs
+saved, including resulting combinational mapping changes. This is 176.4192 µm²
+above the old 9,252.6240 µm² local baseline; fresh hardening is still needed.
+The updated unit suite checks directions before any frame pulse, launch bounce
+rejection, held-launch behavior, gamepad decoding/watchdog and game motion.
+It passes. FPGA implementation uses 830/5,280 logic cells and passes 25.2 MHz
+(final nextpnr estimate 32.07 MHz). No new FPGA upload or hardening was performed.
+Sources/logs are retained in `build/direction-debounce/`.
+
+The direction-debounce build was subsequently uploaded and its SHA256 verified:
+`7480a68b0c51fc397b9f8e3b1568aee05ba6ef4c0236172a4653794965b39e31`.
+Pacman was started at 25.2 MHz with game-selection shortcuts restored. Physical
+DIPs read zero before loading; Pico BIDIR output enable remains zero.

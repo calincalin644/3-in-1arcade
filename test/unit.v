@@ -81,15 +81,18 @@ module unit;
         reset;
         if(paddle!==28 || bx!==32 || state!==0 || lives!==3 || bricks!==16'hffff)
             $fatal(1,"Reset state");
-        // Bounce rejection and per-button qualification at two frame samples.
-        ui[0]=1; clocks(4); tick;
-        if(left) $fatal(1,"DIP accepted after only one sample");
-        ui[0]=0; clocks(4); tick;
-        if(left) $fatal(1,"DIP bounce accepted");
-        ui[0]=1; clocks(4); tick; tick;
-        if(!left) $fatal(1,"DIP left missing");
-        ui[1]=1; clocks(4); tick; tick;
+        // Directions follow the synchronized input without any frame samples.
+        ui[0]=1; clocks(4);
+        if(!left || right) $fatal(1,"Synchronized left missing before frame");
+        ui[0]=0; ui[1]=1; clocks(4);
+        if(left || !right) $fatal(1,"Direction change waited for frame debounce");
+        ui[0]=1; clocks(4);
         if(!left || !right) $fatal(1,"Both direction inputs");
+        // Launch still rejects a one-frame bounce and requires matching samples.
+        ui[2]=1; clocks(4); tick;
+        if(launch) $fatal(1,"Launch accepted after only one sample");
+        ui[2]=0; clocks(4); tick;
+        if(launch) $fatal(1,"Launch bounce accepted");
         ui[2]=1; clocks(4); tick; tick;
         if(!launch) $fatal(1,"Launch edge missing");
         tick;
@@ -334,7 +337,7 @@ module unit;
                 $fatal(1,"Paddle engine restart");
         end
         top_ui=0;
-        $display("PASS: DIP debounce, gamepad protocol/timeout, Breakout motion/collisions, Pong and Pacman motion");
+        $display("PASS: synchronized directions, launch debounce, gamepad protocol/timeout, Breakout motion/collisions, Pong and Pacman motion");
         $finish;
     end
     initial begin #10000000; $fatal(1,"Unit-test timeout"); end

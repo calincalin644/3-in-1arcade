@@ -104,11 +104,11 @@ module breakout_controls (
     reg [11:0] shift;
     reg [4:0] pad;
     reg [5:0] age;
-    reg [2:0] dip_previous, dip_stable;
+    reg dip_previous, dip_stable; // Launch only; directions use synchronized inputs.
     reg launch_previous;
     wire report = sync2[3] && !latch_prev;
     wire serial_rise = sync2[4] && !serial_prev;
-    wire fire = dip_stable[2] | pad[2];
+    wire fire = dip_stable | pad[2];
     wire unused = &{1'b0, ui[7], ui[3]};
 
     always @(posedge clk) begin
@@ -122,11 +122,9 @@ module breakout_controls (
             serial_prev <= sync2[4]; latch_prev <= sync2[3];
             if (serial_rise) shift <= {shift[10:0], sync2[5]};
             if (frame) begin
-                // Two matching samples, 16.7 ms apart, qualify each DIP/button.
-                dip_previous <= sync2[2:0];
-                if (dip_previous[0] == sync2[0]) dip_stable[0] <= sync2[0];
-                if (dip_previous[1] == sync2[1]) dip_stable[1] <= sync2[1];
-                if (dip_previous[2] == sync2[2]) dip_stable[2] <= sync2[2];
+                // Two matching frame samples qualify launch; directions bypass debounce.
+                dip_previous <= sync2[2];
+                if (dip_previous == sync2[2]) dip_stable <= sync2[2];
                 launch_previous <= fire;
                 if (age != 62) age <= age + 1'b1;
                 if (age == 62) pad <= 0; // Disconnect/stale report: release buttons.
@@ -140,8 +138,8 @@ module breakout_controls (
             end
         end
     end
-    assign left = dip_stable[0] | pad[0];
-    assign right = dip_stable[1] | pad[1];
+    assign left = sync2[0] | pad[0];
+    assign right = sync2[1] | pad[1];
     assign up = pad[4];
     assign down = pad[3];
     // Sampled by the game at frame; held launch never auto-launches another life.

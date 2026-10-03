@@ -102,8 +102,10 @@ The loader leaves the RP2350 bidirectional pins as inputs.
 7. The gamepad remains on ui[4:6]; its U/D signals are used by Pacman.
 
 Board switch labels are zero-based (0–7), matching ui[] indices.
-Inputs are active high. DIP/buttons are synchronized and accepted after two
-matching video-frame samples. Hold a press or release for at least 50 ms.
+Inputs are active high. Left/right DIP/buttons pass through two-stage
+synchronizers without debounce; the game uses their levels at the next frame
+update. Launch alone requires two matching video-frame samples. Hold a launch
+press or release for at least 50 ms.
 Launch is edge-triggered, so a held switch does not launch repeatedly.
 
 The Psychogenic Gamepad PMOD uses ui[4]=latch, ui[5]=clock, ui[6]=data.
