@@ -15,7 +15,7 @@ and 215 s (Pacman pellets), run concurrently. Logs and result XML are in the
 local `build/faster-tests/` directory.
 
 **The current revision has not been verified against a newly hardened routed
-netlist.** Local synthesis is 9,424.0384 µm² with 147 FFs; physical one-tile fit,
+netlist.** Local synthesis is 9,474.0864 µm² with 147 FFs; physical one-tile fit,
 post-route checks and gate-level simulation require a fresh hardening run.
 The historical results below do not establish those properties for this RTL.
 

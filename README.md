@@ -3,15 +3,15 @@
 Three Verilog games targeting **Tiny Tapeout SKY 26d / SKY130, one tile**, tested
 on the **ETR demo board with the FabricFox FPGA ASIC simulator**. Shared logic
 produces 640×480 VGA at 60 Hz with RGB222 (64 available colors), without a
-framebuffer. A white on-screen bar and the onboard seven-segment display show
+framebuffer. Three white on-screen squares and the onboard seven-segment display show
 remaining lives.
 
 | Breakout | Pong | Pacman-style maze |
 | :---: | :---: | :---: |
 | ![Breakout with 16 bricks](docs/preview.png) | ![Pong with player and CPU paddles](docs/pong.png) | ![Pacman maze with player and ghost](docs/pacman.png) |
 
-*Earlier simulated screenshots illustrate the games; pellet and lives graphics
-have since changed. The gameplay below describes the current version.*
+*Screenshots regenerated from the current RTL's VGA output pins after reset,
+showing square life indicators and the current pellet layout (640×480).*
 
 ## Connect and play
 
@@ -84,10 +84,10 @@ The persistent selector uses `scripts/arcade_boot.py` and
 
 | Current combined design | Result |
 | --- | ---: |
-| Local SKY130 synthesis cell area | **9,424.04 µm²** |
+| Local SKY130 synthesis cell area | **9,474.09 µm²** |
 | Flip-flops | **147** |
-| FabricFox FPGA logic cells | **827 / 5,280** |
-| FPGA timing | **30.95 MHz**, passing 25.2 MHz |
+| FabricFox FPGA logic cells | **828 / 5,280** |
+| FPGA timing | **33.03 MHz**, passing 25.2 MHz |
 | Current RTL tests | Unit/reference/pellet tests and all four external-pin video tests pass |
 | Demo-board helper tests | 9 pass |
 

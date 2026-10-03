@@ -61,8 +61,9 @@ All games start with three lives. After a lost life, press launch again. A red
 indicates that all bricks or pellets were collected. From either end state,
 press launch once to reset the game, release, then press again to start play.
 
-The on-screen lives indicator is a contiguous white bar at logical (32,12), four
-pixels high and 8/16/24 pixels wide for 1/2/3 lives. It disappears at zero.
+The on-screen lives indicators are three separate white 4×4 logical-pixel
+squares at (32,12), (40,12) and (48,12), displayed as 8×8 VGA pixels each.
+One, two or three squares are shown for that many lives; none are shown at zero.
 The onboard seven-segment display uses only horizontal segments:
 
 | Lives | Lit segments |
@@ -106,10 +107,10 @@ Mode selection is held until reset.
 
 | Combined resource measurement | Current value |
 | --- | ---: |
-| Local SKY130 synthesis cell area | 9,424.0384 µm² |
+| Local SKY130 synthesis cell area | 9,474.0864 µm² |
 | Flip-flops | 147 |
-| FabricFox packed logic cells | 827 / 5,280 |
-| FPGA final timing estimate | 30.95 MHz (25.2 MHz target passes) |
+| FabricFox packed logic cells | 828 / 5,280 |
+| FPGA final timing estimate | 33.03 MHz (25.2 MHz target passes) |
 
 These are local synthesis and FPGA results, not current routed ASIC occupancy.
 The previously hardened revision and its remaining warnings are described in
@@ -191,7 +192,7 @@ the manufactured ASIC has not yet been tested.
 5. In Pacman, check held-direction movement, stopping on release and wall
    blocking. Collect the large pellet to teleport the ghost; collect all food
    for victory. Verify that life loss preserves food progress.
-6. Check the VGA lives bar, seven-segment horizontal bars, end-state colors and
+6. Check the VGA life squares, seven-segment horizontal bars, end-state colors and
    restart behavior. Release A/Start or DIP 2 between presses.
 
 For a custom three-button INPUT PCB, connect normally-open switches from 3.3 V

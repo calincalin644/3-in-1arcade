@@ -475,7 +475,8 @@ module pacman_renderer (
     wire ghost_shape = x[8:4] == ghost_cell_x && y[7:4] == ghost_cell_y &&
                        x[3:0] >= 4 && x[3:0] <= 11 &&
                        y[3:0] >= 4 && y[3:0] <= 11;
-    wire life_icon = y[7:2] == 3 && x[8:5] == 1 && x[4:3] < lives;
+    // Three 4x4 life squares, spaced eight pixels apart at (32,12).
+    wire life_icon = y[7:2] == 3 && x[8:5] == 1 && !x[2] && x[4:3] < lives;
     always @* begin
         rgb = 0;
         if (active) begin
@@ -516,7 +517,8 @@ module breakout_renderer (
     wire brick = y >= 32 && y < 64 && bricks[brick_index] &&
                  px[4:0] >= 1 && px[4:0] < 31 && y[3:0] >= 1 && y[3:0] < 15;
     wire [7:0] paddle_delta = px - paddle;
-    wire life_icon = y[7:2] == 3 && x[8:5] == 1 && x[4:3] < lives;
+    // Three 4x4 life squares, spaced eight pixels apart at (32,12).
+    wire life_icon = y[7:2] == 3 && x[8:5] == 1 && !x[2] && x[4:3] < lives;
     always @* begin
         rgb = 0;
         if (active) begin

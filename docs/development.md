@@ -889,3 +889,43 @@ local area. The pin descriptions now identify unused seven-segment outputs as
 always off. Current RTL/FPGA results are explicitly separate from the earlier
 `299f5d5` hardening and gate-level results. Screenshots remain illustrative
 historical images and are labeled accordingly. No RTL or bitstream changed.
+
+
+### Restore separate on-screen life squares (2026-10-03)
+
+Both renderers now draw three separate 4×4 logical-pixel squares at (32,12),
+(40,12) and (48,12), corresponding to 8×8 pixels each on VGA. The expression
+adds `!x[2]` to the former wide life-bar mask, retaining only half of each
+8-pixel slot. One/two/three squares indicate the remaining lives. The lives
+counter and seven-segment horizontal bars are unchanged.
+
+Local SKY130 synthesis is 9,474.0864 µm² and 147 FFs, versus 9,424.0384 µm²
+before: 50.0480 µm² (0.53%) larger, with no added FFs. FPGA use is 828/5,280
+logic cells; final timing is 33.03 MHz, passing 25.2 MHz. No fresh hardening
+was run. The known SKY130 1×1 tile has outer dimensions 161×111.52 µm
+(17,954.72 µm²) and a 16,493.318 µm² placement core; local synthesis area is
+not final physical occupancy.
+
+The bitstream was uploaded, SHA256 verified, and Breakout selected without
+auto-launch at exactly 25.2 MHz. The helper remains installed, and the Pico
+BIDIR drivers remain disabled. SHA256:
+`8648e9a9fb8cb4351f63c3c061c48f282eb5c5d2717d6740a3919d2ef1336ece`.
+The external-pin video test now samples a square interior and the black gap.
+Logs and the prior source are in `build/life-squares/`.
+
+The updated life-squares external-pin video regression passed in 106.16 s,
+including square-interior and gap pixels, complete sync/blanking checks,
+paddle controls and launch. Other gameplay RTL was unchanged.
+
+
+### Regenerate current game screenshots (2026-10-03)
+
+Rebuilt `test/render.v` against the current RTL and captured each game's first
+active frame after reset through the actual RGB222 VGA output pins. Replaced
+`docs/preview.png`, `docs/pong.png` and `docs/pacman.png` with lossless 640×480
+PNG conversions of those simulator captures. All images were checked for the
+three 8×8 physical-pixel life squares and black gaps. Pacman shows the current
+sparse food layout, large teleport pellet, solid player and red ghost; Breakout
+shows all sixteen bricks before serve. README now labels these as current RTL
+captures. Source/image hashes and raw captures are in `build/screenshots/`.
+No RTL, gameplay, area or board bitstream changed.

@@ -20,7 +20,7 @@ async def video_and_controls(dut):
     pins = ArcadePins(dut)
     await pins.reset(0)
     # Sample the same image points in raster order, without extra frame wraps.
-    samples = [(72, 24, (3, 3, 3)), (584, 24, (0, 0, 0)),
+    samples = [(68, 24, (3, 3, 3)), (76, 24, (0, 0, 0)), (584, 24, (0, 0, 0)),
                (100, 40, (0, 0, 0)),
                (70, 66, (3, 0, 1)), (70, 82, (3, 0, 1)),
                (70, 96, (0, 0, 0)), (70, 98, (0, 2, 3)), (70, 114, (0, 2, 3)),
